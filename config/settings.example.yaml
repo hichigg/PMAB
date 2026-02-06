@@ -19,6 +19,15 @@ risk:
   min_orderbook_depth_usd: 500
   max_spread: 0.10
 
+scanner:
+  scan_interval_secs: 60
+  max_tracked_markets: 50
+  orderbook_batch_size: 10
+  score_weights:
+    depth: 0.4
+    spread: 0.4
+    recency: 0.2
+
 feeds:
   economic:
     enabled: true

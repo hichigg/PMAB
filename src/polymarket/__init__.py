@@ -13,6 +13,7 @@ from src.polymarket.market_params import MarketParams, MarketParamsCache
 from src.polymarket.order_pool import PreSignedOrderPool
 from src.polymarket.presigner import OrderPreSigner, PreSignedOrder
 from src.polymarket.rate_limiter import RateLimiter
+from src.polymarket.scanner import MarketScanner
 from src.polymarket.ws import OrderBookSubscription
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "ClobWebSocketError",
     "MarketParams",
     "MarketParamsCache",
+    "MarketScanner",
     "OrderBookSubscription",
     "OrderPreSigner",
     "PolymarketClient",

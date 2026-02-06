@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -108,3 +109,76 @@ class MarketInfo(BaseModel):
     end_date_iso: str = ""
     tags: list[str] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)
+
+
+# ── Scanner Types ────────────────────────────────────────────────
+
+
+class MarketCategory(StrEnum):
+    """Category for classifying markets."""
+
+    ECONOMIC = "ECONOMIC"
+    SPORTS = "SPORTS"
+    CRYPTO = "CRYPTO"
+    POLITICS = "POLITICS"
+    OTHER = "OTHER"
+
+
+class ScanEventType(StrEnum):
+    """Type of scanner event."""
+
+    OPPORTUNITY_FOUND = "OPPORTUNITY_FOUND"
+    OPPORTUNITY_UPDATED = "OPPORTUNITY_UPDATED"
+    OPPORTUNITY_LOST = "OPPORTUNITY_LOST"
+
+
+class ScanFilter(BaseModel):
+    """Filter criteria for market scanning."""
+
+    categories: list[MarketCategory] = Field(default_factory=list)
+    tag_allowlist: list[str] = Field(default_factory=list)
+    tag_blocklist: list[str] = Field(default_factory=list)
+    question_patterns: list[str] = Field(default_factory=list)
+    require_active: bool = True
+    exclude_closed: bool = True
+    min_hours_to_expiry: float | None = None
+    max_hours_to_expiry: float | None = None
+
+    def compiled_patterns(self) -> list[re.Pattern[str]]:
+        """Return compiled regex patterns for question matching."""
+        return [re.compile(p, re.IGNORECASE) for p in self.question_patterns]
+
+
+class LiquidityScreen(BaseModel):
+    """Liquidity thresholds for filtering markets."""
+
+    min_depth_usd: Decimal = Decimal("100")
+    max_spread: Decimal = Decimal("0.10")
+    min_bid_depth_usd: Decimal = Decimal("0")
+    min_ask_depth_usd: Decimal = Decimal("0")
+
+
+class MarketOpportunity(BaseModel):
+    """A scored market opportunity tracked by the scanner."""
+
+    condition_id: str
+    question: str = ""
+    category: MarketCategory = MarketCategory.OTHER
+    tokens: list[dict[str, Any]] = Field(default_factory=list)
+    token_id: str = ""
+    best_bid: Decimal | None = None
+    best_ask: Decimal | None = None
+    spread: Decimal | None = None
+    depth_usd: Decimal = Decimal("0")
+    score: float = 0.0
+    first_seen: float = 0.0
+    last_updated: float = 0.0
+    market_info: MarketInfo | None = None
+
+
+class ScanEvent(BaseModel):
+    """Event emitted by the scanner."""
+
+    event_type: ScanEventType
+    opportunity: MarketOpportunity
+    timestamp: float = 0.0

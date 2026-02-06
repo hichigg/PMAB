@@ -51,12 +51,26 @@ class LoggingConfig(BaseModel):
     format: str = "json"
 
 
+class ScannerConfig(BaseModel):
+    """Market scanner configuration."""
+
+    scan_interval_secs: float = 60.0
+    max_tracked_markets: int = 50
+    orderbook_batch_size: int = 10
+    score_weights: dict[str, float] = {
+        "depth": 0.4,
+        "spread": 0.4,
+        "recency": 0.2,
+    }
+
+
 class Settings(BaseModel):
     """Root settings container."""
 
     polymarket: PolymarketConfig = PolymarketConfig()
     rate_limit: RateLimitConfig = RateLimitConfig()
     risk: RiskConfig = RiskConfig()
+    scanner: ScannerConfig = ScannerConfig()
     logging: LoggingConfig = LoggingConfig()
 
 
