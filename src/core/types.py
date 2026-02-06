@@ -319,3 +319,84 @@ class CryptoTicker(BaseModel):
     change_pct: Decimal = Decimal("0")
     timestamp: float = 0.0
     raw: dict[str, Any] = Field(default_factory=dict)
+
+
+# ── Strategy Types ─────────────────────────────────────────────
+
+
+class SignalDirection(StrEnum):
+    """Direction of a trading signal."""
+
+    BUY = "BUY"
+    SELL = "SELL"
+
+
+class MatchResult(BaseModel):
+    """Result of matching a feed event to a market opportunity."""
+
+    feed_event: FeedEvent
+    opportunity: MarketOpportunity
+    target_token_id: str = ""
+    target_outcome: str = ""
+    match_confidence: float = 0.0
+    match_reason: str = ""
+
+
+class Signal(BaseModel):
+    """A trading signal derived from a match between event and market."""
+
+    match: MatchResult
+    fair_value: Decimal = Decimal("0")
+    confidence: float = 0.0
+    direction: SignalDirection = SignalDirection.BUY
+    edge: Decimal = Decimal("0")
+    current_price: Decimal = Decimal("0")
+    created_at: float = 0.0
+
+
+class TradeAction(BaseModel):
+    """A sized, executable trade derived from a signal."""
+
+    signal: Signal
+    token_id: str = ""
+    side: Side = Side.BUY
+    price: Decimal = Decimal("0")
+    size: Decimal = Decimal("0")
+    order_type: OrderType = OrderType.FOK
+    max_slippage: Decimal = Decimal("0.02")
+    estimated_profit_usd: Decimal = Decimal("0")
+    reason: str = ""
+
+
+class ExecutionResult(BaseModel):
+    """Result of attempting to execute a trade action."""
+
+    action: TradeAction
+    order_response: OrderResponse | None = None
+    success: bool = False
+    fill_price: Decimal | None = None
+    fill_size: Decimal | None = None
+    executed_at: float = 0.0
+    error: str = ""
+
+
+class ArbEventType(StrEnum):
+    """Type of arbitrage engine event."""
+
+    SIGNAL_GENERATED = "SIGNAL_GENERATED"
+    TRADE_EXECUTED = "TRADE_EXECUTED"
+    TRADE_FAILED = "TRADE_FAILED"
+    TRADE_SKIPPED = "TRADE_SKIPPED"
+    ENGINE_STARTED = "ENGINE_STARTED"
+    ENGINE_STOPPED = "ENGINE_STOPPED"
+
+
+class ArbEvent(BaseModel):
+    """Event emitted by the arbitrage engine."""
+
+    event_type: ArbEventType
+    signal: Signal | None = None
+    action: TradeAction | None = None
+    result: ExecutionResult | None = None
+    reason: str = ""
+    timestamp: float = 0.0

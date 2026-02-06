@@ -116,6 +116,25 @@ class FeedsConfig(BaseModel):
     crypto: CryptoFeedConfig = CryptoFeedConfig()
 
 
+class StrategyConfig(BaseModel):
+    """Core arbitrage strategy configuration."""
+
+    match_confidence_threshold: float = 0.8
+    min_edge: float = 0.05
+    min_confidence: float = 0.99
+    max_staleness_secs: float = 60.0
+    base_size_usd: float = 100.0
+    max_size_usd: float = 1000.0
+    kelly_fraction: float = 0.25
+    use_kelly_sizing: bool = False
+    default_order_type: str = "FOK"
+    max_slippage: float = 0.02
+    use_presigned_orders: bool = True
+    economic_min_edge: float | None = None
+    sports_min_edge: float | None = None
+    crypto_min_edge: float | None = None
+
+
 class Settings(BaseModel):
     """Root settings container."""
 
@@ -124,6 +143,7 @@ class Settings(BaseModel):
     risk: RiskConfig = RiskConfig()
     scanner: ScannerConfig = ScannerConfig()
     feeds: FeedsConfig = FeedsConfig()
+    strategy: StrategyConfig = StrategyConfig()
     logging: LoggingConfig = LoggingConfig()
 
 

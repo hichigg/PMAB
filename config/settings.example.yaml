@@ -53,6 +53,23 @@ feeds:
     reconnect_cap_secs: 30.0
     ping_interval_secs: 10.0
 
+strategy:
+  match_confidence_threshold: 0.8
+  min_edge: 0.05
+  min_confidence: 0.99
+  max_staleness_secs: 60
+  base_size_usd: 100
+  max_size_usd: 1000
+  kelly_fraction: 0.25
+  use_kelly_sizing: false
+  default_order_type: FOK
+  max_slippage: 0.02
+  use_presigned_orders: true
+  # Per-category edge overrides (null = use min_edge)
+  # economic_min_edge: 0.03
+  # sports_min_edge: 0.05
+  # crypto_min_edge: 0.08
+
 alerts:
   telegram:
     enabled: false
