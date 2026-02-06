@@ -26,6 +26,8 @@ from src.core.types import (
 )
 from src.polymarket.client import PolymarketClient, _parse_market, _parse_orderbook
 from src.polymarket.exceptions import ClobConnectionError, ClobOrderError
+from src.polymarket.market_params import MarketParams
+from src.polymarket.presigner import PreSignedOrder
 from src.polymarket.rate_limiter import RateLimiter
 from src.polymarket.ws import _parse_book_message
 
@@ -76,6 +78,16 @@ def mock_sdk() -> MagicMock:
     sdk.cancel_all.return_value = {"canceled": ["order-1", "order-2"]}
     sdk.get_orders.return_value = [{"id": "order-1"}]
     sdk.get_trades.return_value = [{"id": "trade-1"}]
+    # Market params methods (for presigning)
+    sdk.get_tick_size.return_value = "0.01"
+    sdk.get_neg_risk.return_value = False
+    sdk.get_fee_rate_bps.return_value = 20
+    # Builder for presigning
+    sdk.builder = MagicMock()
+    mock_signed = MagicMock()
+    mock_signed.order = MagicMock()
+    mock_signed.signature = "0xdeadbeef"
+    sdk.builder.create_order.return_value = mock_signed
     return sdk
 
 
@@ -398,3 +410,123 @@ class TestWsMessageParsing:
         book = _parse_book_message("tok1", data)
         assert book.bids[0].price == Decimal("0.123456789")
         assert book.bids[0].size == Decimal("1000.50")
+
+
+class TestClientPresigning:
+    """Test pre-signing integration in PolymarketClient."""
+
+    async def test_presign_order(
+        self, client: PolymarketClient, mock_sdk: MagicMock
+    ) -> None:
+        """presign_order returns a PreSignedOrder without posting."""
+        req = OrderRequest(
+            token_id="tok1",
+            side=Side.BUY,
+            price=Decimal("0.60"),
+            size=Decimal("100"),
+        )
+        result = await client.presign_order(req)
+
+        assert isinstance(result, PreSignedOrder)
+        assert result.request.token_id == "tok1"
+        assert result.signed_order is not None
+        # Should NOT have posted
+        mock_sdk.post_order.assert_not_called()
+
+    async def test_post_presigned(
+        self, client: PolymarketClient, mock_sdk: MagicMock
+    ) -> None:
+        """post_presigned posts without re-signing."""
+        import time
+
+        presigned = PreSignedOrder(
+            signed_order=MagicMock(),
+            request=OrderRequest(
+                token_id="tok1",
+                side=Side.BUY,
+                price=Decimal("0.60"),
+                size=Decimal("100"),
+            ),
+            market_params=MarketParams(
+                token_id="tok1",
+                tick_size="0.01",
+                neg_risk=False,
+                fee_rate_bps=20,
+                fetched_at=time.monotonic(),
+            ),
+        )
+        mock_sdk.post_order.return_value = {
+            "orderID": "order-456",
+            "success": True,
+        }
+        resp = await client.post_presigned(presigned)
+
+        assert resp.success is True
+        assert resp.order_id == "order-456"
+        # create_order should NOT be called — no re-signing
+        mock_sdk.create_order.assert_not_called()
+        mock_sdk.post_order.assert_called_once()
+
+    async def test_presign_batch(
+        self, client: PolymarketClient, mock_sdk: MagicMock
+    ) -> None:
+        """presign_batch signs multiple orders concurrently."""
+        requests = [
+            OrderRequest(
+                token_id="tok1",
+                side=Side.BUY,
+                price=Decimal("0.60"),
+                size=Decimal("100"),
+            ),
+            OrderRequest(
+                token_id="tok1",
+                side=Side.BUY,
+                price=Decimal("0.65"),
+                size=Decimal("100"),
+            ),
+        ]
+        results = await client.presign_batch(requests)
+        assert len(results) == 2
+        mock_sdk.post_order.assert_not_called()
+
+    async def test_get_market_params_caches(
+        self, client: PolymarketClient, mock_sdk: MagicMock
+    ) -> None:
+        """Second call for same token uses cache, not SDK."""
+        params1 = await client.get_market_params("tok1")
+        params2 = await client.get_market_params("tok1")
+
+        assert params1.token_id == params2.token_id
+        assert params1.tick_size == "0.01"
+        # SDK methods should only be called once each
+        assert mock_sdk.get_tick_size.call_count == 1
+
+    async def test_warm_market_params(
+        self, client: PolymarketClient, mock_sdk: MagicMock
+    ) -> None:
+        """warm_market_params pre-fetches multiple tokens."""
+        result = await client.warm_market_params(["tok1", "tok2"])
+        assert len(result) == 2
+        assert "tok1" in result
+        assert "tok2" in result
+
+    async def test_order_pool_accessible(
+        self, client: PolymarketClient
+    ) -> None:
+        """order_pool property should be accessible after connect."""
+        pool = client.order_pool
+        assert pool is not None
+        assert pool.size == 0
+
+    async def test_order_pool_before_connect_raises(self) -> None:
+        """order_pool raises if not connected."""
+        reset_settings()
+        c = PolymarketClient(
+            host="https://test.host",
+            private_key="0x0",
+            rate_limiter=RateLimiter(
+                burst_per_sec=10000, sustained_per_sec=10000
+            ),
+        )
+        with pytest.raises(ClobConnectionError, match="not connected"):
+            _ = c.order_pool

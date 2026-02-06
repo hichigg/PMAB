@@ -29,6 +29,9 @@ from src.polymarket.exceptions import (
     ClobOrderError,
     ClobRateLimitError,
 )
+from src.polymarket.market_params import MarketParams, MarketParamsCache
+from src.polymarket.order_pool import PreSignedOrderPool
+from src.polymarket.presigner import OrderPreSigner, PreSignedOrder
 from src.polymarket.rate_limiter import RateLimiter
 from src.polymarket.ws import OrderBookCallback, OrderBookSubscription
 
@@ -72,6 +75,23 @@ def _parse_market(raw: dict[str, Any]) -> MarketInfo:
     )
 
 
+def _parse_order_response(raw: Any) -> OrderResponse:
+    """Parse SDK post_order response into an OrderResponse."""
+    order_id = ""
+    success = False
+    if isinstance(raw, dict):
+        order_id = str(raw.get("orderID", raw.get("id", "")))
+        success = raw.get("success", bool(order_id))
+    elif isinstance(raw, str):
+        order_id = raw
+        success = True
+    return OrderResponse(
+        order_id=order_id,
+        success=success,
+        raw=raw if isinstance(raw, dict) else {"response": raw},
+    )
+
+
 class PolymarketClient:
     """Async wrapper around the synchronous py-clob-client.
 
@@ -111,6 +131,9 @@ class PolymarketClient:
 
         self._sdk: ClobClient | None = None
         self._ws_subscriptions: dict[str, OrderBookSubscription] = {}
+        self._params_cache = MarketParamsCache(ttl_secs=300.0)
+        self._presigner: OrderPreSigner | None = None
+        self._order_pool: PreSignedOrderPool | None = None
 
     async def connect(self) -> None:
         """Initialize the underlying SDK client."""
@@ -129,10 +152,21 @@ class PolymarketClient:
         except Exception as exc:
             raise ClobConnectionError(f"Failed to initialize CLOB client: {exc}") from exc
 
+        self._presigner = OrderPreSigner(self._sdk)
+        self._order_pool = PreSignedOrderPool(
+            presigner=self._presigner,
+            params_cache=self._params_cache,
+            sdk=self._sdk,
+        )
         logger.info("clob_client_connected", host=self._host)
 
     async def close(self) -> None:
-        """Clean up resources — close all WS subscriptions."""
+        """Clean up resources — close WS subscriptions and order pool."""
+        if self._order_pool is not None:
+            await self._order_pool.stop_refresh_loop()
+            self._order_pool = None
+        self._presigner = None
+        self._params_cache.clear()
         for sub in list(self._ws_subscriptions.values()):
             await sub.stop()
         self._ws_subscriptions.clear()
@@ -265,20 +299,7 @@ class PolymarketClient:
                 raise ClobRateLimitError(str(exc)) from exc
             raise ClobOrderError(f"Order failed: {exc}") from exc
 
-        order_id = ""
-        success = False
-        if isinstance(raw, dict):
-            order_id = str(raw.get("orderID", raw.get("id", "")))
-            success = raw.get("success", bool(order_id))
-        elif isinstance(raw, str):
-            order_id = raw
-            success = True
-
-        return OrderResponse(
-            order_id=order_id,
-            success=success,
-            raw=raw if isinstance(raw, dict) else {"response": raw},
-        )
+        return _parse_order_response(raw)
 
     async def place_market_order(self, req: MarketOrderRequest) -> OrderResponse:
         """Place a market order (FOK) — fills immediately or cancels."""
@@ -330,6 +351,83 @@ class PolymarketClient:
                 for oid in canceled
             ]
         return []
+
+    # ── Pre-signing ───────────────────────────────────────────────
+
+    @property
+    def params_cache(self) -> MarketParamsCache:
+        """Access the market parameters cache."""
+        return self._params_cache
+
+    @property
+    def order_pool(self) -> PreSignedOrderPool:
+        """Access the pre-signed order pool."""
+        if self._order_pool is None:
+            raise ClobConnectionError(
+                "Client not connected. Call connect() first."
+            )
+        return self._order_pool
+
+    async def get_market_params(self, token_id: str) -> MarketParams:
+        """Fetch (or return cached) market parameters for a token."""
+        return await self._params_cache.get(token_id, self.sdk)
+
+    async def warm_market_params(
+        self, token_ids: list[str]
+    ) -> dict[str, MarketParams]:
+        """Pre-fetch market parameters for multiple tokens."""
+        return await self._params_cache.warm(token_ids, self.sdk)
+
+    async def presign_order(self, req: OrderRequest) -> PreSignedOrder:
+        """Sign an order without posting it.
+
+        Resolves market params from cache (fetching if needed),
+        then signs via the SDK's OrderBuilder.
+        """
+        if self._presigner is None:
+            raise ClobConnectionError(
+                "Client not connected. Call connect() first."
+            )
+        params = await self.get_market_params(req.token_id)
+        return await self._presigner.presign(req, params)
+
+    async def presign_batch(
+        self, requests: list[OrderRequest]
+    ) -> list[PreSignedOrder]:
+        """Sign multiple orders concurrently without posting."""
+        if self._presigner is None:
+            raise ClobConnectionError(
+                "Client not connected. Call connect() first."
+            )
+        token_ids = list({req.token_id for req in requests})
+        params_results = await self.warm_market_params(token_ids)
+        return await self._presigner.presign_batch(
+            requests, params_results
+        )
+
+    async def post_presigned(
+        self, presigned: PreSignedOrder
+    ) -> OrderResponse:
+        """Post a previously signed order — no signing delay, just HTTP POST."""
+        await self._rate_limiter.acquire()
+
+        sdk_order_type = _ORDER_TYPE_MAP.get(
+            presigned.order_type, SdkOrderType.GTC
+        )
+
+        try:
+            raw = await asyncio.to_thread(
+                self.sdk.post_order, presigned.signed_order, sdk_order_type
+            )
+        except Exception as exc:
+            error_msg = str(exc).lower()
+            if "rate" in error_msg and "limit" in error_msg:
+                raise ClobRateLimitError(str(exc)) from exc
+            raise ClobOrderError(
+                f"Post presigned order failed: {exc}"
+            ) from exc
+
+        return _parse_order_response(raw)
 
     # ── Order/Trade Queries ──────────────────────────────────────
 

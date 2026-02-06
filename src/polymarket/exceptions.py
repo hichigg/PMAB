@@ -21,3 +21,7 @@ class ClobOrderError(ClobClientError):
 
 class ClobWebSocketError(ClobClientError):
     """WebSocket connection or message error."""
+
+
+class ClobPresignError(ClobClientError):
+    """Order pre-signing failed."""
