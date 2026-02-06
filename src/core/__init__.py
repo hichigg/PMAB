@@ -1,6 +1,8 @@
 """Core module — config, types, logging."""
 
 from src.core.config import (
+    EconomicFeedConfig,
+    FeedsConfig,
     ScannerConfig,
     Settings,
     get_settings,
@@ -10,6 +12,11 @@ from src.core.config import (
 from src.core.logging import setup_logging
 from src.core.types import (
     CancelResponse,
+    EconomicIndicator,
+    EconomicRelease,
+    FeedEvent,
+    FeedEventType,
+    FeedType,
     LiquidityScreen,
     MarketCategory,
     MarketInfo,
@@ -19,6 +26,7 @@ from src.core.types import (
     OrderRequest,
     OrderResponse,
     OrderType,
+    OutcomeType,
     PriceLevel,
     ScanEvent,
     ScanEventType,
@@ -28,6 +36,13 @@ from src.core.types import (
 
 __all__ = [
     "CancelResponse",
+    "EconomicFeedConfig",
+    "EconomicIndicator",
+    "EconomicRelease",
+    "FeedEvent",
+    "FeedEventType",
+    "FeedType",
+    "FeedsConfig",
     "LiquidityScreen",
     "MarketCategory",
     "MarketInfo",
@@ -37,6 +52,7 @@ __all__ = [
     "OrderRequest",
     "OrderResponse",
     "OrderType",
+    "OutcomeType",
     "PriceLevel",
     "ScanEvent",
     "ScanEventType",

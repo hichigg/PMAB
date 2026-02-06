@@ -64,6 +64,45 @@ class ScannerConfig(BaseModel):
     }
 
 
+class EconomicFeedConfig(BaseModel):
+    """Economic data feed configuration."""
+
+    enabled: bool = False
+    source: str = "bls_scraper"
+    poll_interval_ms: int = 100
+    indicators: list[str] = [
+        "CPI",
+        "CORE_CPI",
+        "NFP",
+        "UNEMPLOYMENT",
+        "PPI",
+    ]
+    base_url: str = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+    api_key: str = ""
+
+
+class SportsFeedConfig(BaseModel):
+    """Sports data feed configuration (stub — implementation deferred)."""
+
+    enabled: bool = False
+    source: str = "espn"
+
+
+class CryptoFeedConfig(BaseModel):
+    """Crypto data feed configuration (stub — implementation deferred)."""
+
+    enabled: bool = False
+    exchanges: list[str] = ["binance", "coinbase"]
+
+
+class FeedsConfig(BaseModel):
+    """Container for all feed configurations."""
+
+    economic: EconomicFeedConfig = EconomicFeedConfig()
+    sports: SportsFeedConfig = SportsFeedConfig()
+    crypto: CryptoFeedConfig = CryptoFeedConfig()
+
+
 class Settings(BaseModel):
     """Root settings container."""
 
@@ -71,6 +110,7 @@ class Settings(BaseModel):
     rate_limit: RateLimitConfig = RateLimitConfig()
     risk: RiskConfig = RiskConfig()
     scanner: ScannerConfig = ScannerConfig()
+    feeds: FeedsConfig = FeedsConfig()
     logging: LoggingConfig = LoggingConfig()
 
 

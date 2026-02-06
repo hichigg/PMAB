@@ -182,3 +182,73 @@ class ScanEvent(BaseModel):
     event_type: ScanEventType
     opportunity: MarketOpportunity
     timestamp: float = 0.0
+
+
+# ── Feed Types ──────────────────────────────────────────────────
+
+
+class FeedType(StrEnum):
+    """Type of data feed."""
+
+    ECONOMIC = "ECONOMIC"
+    SPORTS = "SPORTS"
+    CRYPTO = "CRYPTO"
+
+
+class OutcomeType(StrEnum):
+    """How a feed event outcome is expressed."""
+
+    NUMERIC = "NUMERIC"  # e.g. CPI = 3.2%
+    BOOLEAN = "BOOLEAN"  # e.g. did X happen?
+    CATEGORICAL = "CATEGORICAL"  # e.g. winner = TeamA
+
+
+class FeedEventType(StrEnum):
+    """Type of feed event."""
+
+    DATA_RELEASED = "DATA_RELEASED"
+    FEED_CONNECTED = "FEED_CONNECTED"
+    FEED_DISCONNECTED = "FEED_DISCONNECTED"
+    FEED_ERROR = "FEED_ERROR"
+
+
+class FeedEvent(BaseModel):
+    """Source-agnostic event emitted by a data feed."""
+
+    feed_type: FeedType
+    event_type: FeedEventType
+    indicator: str = ""
+    value: str = ""
+    numeric_value: Decimal | None = None
+    outcome_type: OutcomeType = OutcomeType.NUMERIC
+    released_at: float = 0.0
+    received_at: float = 0.0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class EconomicIndicator(StrEnum):
+    """Known economic indicators tracked by the economic feed."""
+
+    CPI = "CPI"
+    CORE_CPI = "CORE_CPI"
+    NFP = "NFP"
+    UNEMPLOYMENT = "UNEMPLOYMENT"
+    GDP = "GDP"
+    PPI = "PPI"
+    PCE = "PCE"
+    FED_RATE = "FED_RATE"
+    INITIAL_CLAIMS = "INITIAL_CLAIMS"
+
+
+class EconomicRelease(BaseModel):
+    """A single economic data release from a feed source."""
+
+    indicator: EconomicIndicator
+    value: str = ""
+    numeric_value: Decimal | None = None
+    prior_value: str = ""
+    forecast_value: str = ""
+    released_at: float = 0.0
+    source: str = ""
+    raw: dict[str, Any] = Field(default_factory=dict)
