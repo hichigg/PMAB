@@ -21,6 +21,7 @@ from src.core.types import (
     OrderResponse,
     OutcomeType,
 )
+from src.risk.monitor import RiskMonitor
 from src.strategy.engine import ArbEngine
 
 # ── Helpers ─────────────────────────────────────────────────────
@@ -454,3 +455,134 @@ class TestCallbacks:
         # Should not raise
         results = await engine.process_event(_event())
         assert isinstance(results, list)
+
+
+# ── Risk Integration ──────────────────────────────────────────
+
+
+def _make_engine_with_risk(
+    opportunities: dict[str, MarketOpportunity] | None = None,
+    config: StrategyConfig | None = None,
+    risk_config: RiskConfig | None = None,
+    order_success: bool = True,
+    risk_monitor: RiskMonitor | None = None,
+) -> ArbEngine:
+    """Create an ArbEngine with mocked client/scanner and a RiskMonitor."""
+    client = MagicMock()
+    response = OrderResponse(
+        order_id="order123",
+        success=order_success,
+        raw={"orderID": "order123"},
+    )
+    client.place_market_order = AsyncMock(return_value=response)
+    client.place_order = AsyncMock(return_value=response)
+
+    scanner = MagicMock()
+    if opportunities is None:
+        opportunities = {}
+    scanner.opportunities = opportunities
+
+    rc = risk_config or _risk()
+    if risk_monitor is None:
+        risk_monitor = RiskMonitor(config=rc)
+
+    return ArbEngine(
+        client=client,
+        scanner=scanner,
+        config=config or _cfg(),
+        risk_config=rc,
+        risk_monitor=risk_monitor,
+    )
+
+
+class TestRiskIntegration:
+    @pytest.mark.asyncio
+    async def test_no_monitor_still_works(self) -> None:
+        """Engine works without a risk monitor (backward compat)."""
+        opps = {"cond1": _opp()}
+        engine = _make_engine(opportunities=opps)
+        results = await engine.process_event(_event())
+        assert len(results) >= 1
+        assert results[0].success is True
+
+    @pytest.mark.asyncio
+    async def test_rejection_skips_trade(self) -> None:
+        """Kill switch active → trade skipped."""
+        opps = {"cond1": _opp()}
+        monitor = RiskMonitor(config=_risk())
+        monitor._killed = True
+        engine = _make_engine_with_risk(opportunities=opps, risk_monitor=monitor)
+
+        results = await engine.process_event(_event())
+        assert results == []
+        assert engine.stats["trades_skipped"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_approval_allows_trade(self) -> None:
+        """All gates pass → trade executes normally."""
+        opps = {"cond1": _opp()}
+        engine = _make_engine_with_risk(opportunities=opps)
+
+        results = await engine.process_event(_event())
+        assert len(results) >= 1
+        assert results[0].success is True
+
+    @pytest.mark.asyncio
+    async def test_record_fill_called_on_success(self) -> None:
+        """record_fill is called after successful execution."""
+        opps = {"cond1": _opp()}
+        monitor = RiskMonitor(config=_risk())
+        engine = _make_engine_with_risk(opportunities=opps, risk_monitor=monitor)
+
+        await engine.process_event(_event())
+        assert monitor.positions.count >= 1
+
+    @pytest.mark.asyncio
+    async def test_record_fill_not_called_on_failure(self) -> None:
+        """record_fill is NOT called when order fails."""
+        opps = {"cond1": _opp()}
+        monitor = RiskMonitor(config=_risk())
+        engine = _make_engine_with_risk(
+            opportunities=opps, risk_monitor=monitor, order_success=False,
+        )
+
+        await engine.process_event(_event())
+        assert monitor.positions.count == 0
+
+    @pytest.mark.asyncio
+    async def test_emits_risk_rejected(self) -> None:
+        """RISK_REJECTED event is emitted when risk gate rejects."""
+        opps = {"cond1": _opp()}
+        monitor = RiskMonitor(config=_risk())
+        monitor._killed = True
+        engine = _make_engine_with_risk(opportunities=opps, risk_monitor=monitor)
+        events: list[ArbEvent] = []
+        engine.on_event(lambda e: events.append(e))
+
+        await engine.process_event(_event())
+        assert any(e.event_type == ArbEventType.RISK_REJECTED for e in events)
+
+    @pytest.mark.asyncio
+    async def test_increments_skipped(self) -> None:
+        """trades_skipped increments on risk rejection."""
+        opps = {"cond1": _opp()}
+        monitor = RiskMonitor(config=_risk())
+        monitor._killed = True
+        engine = _make_engine_with_risk(opportunities=opps, risk_monitor=monitor)
+
+        initial = engine.stats["trades_skipped"]
+        await engine.process_event(_event())
+        assert engine.stats["trades_skipped"] > initial
+
+    def test_risk_snapshot_property(self) -> None:
+        """risk_snapshot delegates to monitor.snapshot()."""
+        monitor = RiskMonitor(config=_risk())
+        engine = _make_engine_with_risk(risk_monitor=monitor)
+        snap = engine.risk_snapshot
+        assert snap is not None
+        assert "killed" in snap
+
+    def test_risk_snapshot_none_without_monitor(self) -> None:
+        """risk_snapshot is None when no monitor configured."""
+        engine = _make_engine()
+        assert engine.risk_snapshot is None

@@ -387,6 +387,7 @@ class ArbEventType(StrEnum):
     TRADE_EXECUTED = "TRADE_EXECUTED"
     TRADE_FAILED = "TRADE_FAILED"
     TRADE_SKIPPED = "TRADE_SKIPPED"
+    RISK_REJECTED = "RISK_REJECTED"
     ENGINE_STARTED = "ENGINE_STARTED"
     ENGINE_STOPPED = "ENGINE_STOPPED"
 
@@ -398,5 +399,61 @@ class ArbEvent(BaseModel):
     signal: Signal | None = None
     action: TradeAction | None = None
     result: ExecutionResult | None = None
+    reason: str = ""
+    timestamp: float = 0.0
+
+
+# ── Risk Types ─────────────────────────────────────────────────
+
+
+class RiskEventType(StrEnum):
+    """Type of risk management event."""
+
+    KILL_SWITCH_TRIGGERED = "KILL_SWITCH_TRIGGERED"
+    KILL_SWITCH_RESET = "KILL_SWITCH_RESET"
+    RISK_GATE_REJECTED = "RISK_GATE_REJECTED"
+    POSITION_OPENED = "POSITION_OPENED"
+    POSITION_CLOSED = "POSITION_CLOSED"
+    DAILY_PNL_UPDATED = "DAILY_PNL_UPDATED"
+
+
+class RiskRejectionReason(StrEnum):
+    """Reason a trade was rejected by a risk gate."""
+
+    KILL_SWITCH_ACTIVE = "KILL_SWITCH_ACTIVE"
+    DAILY_LOSS_LIMIT = "DAILY_LOSS_LIMIT"
+    POSITION_CONCENTRATION = "POSITION_CONCENTRATION"
+    MAX_CONCURRENT_POSITIONS = "MAX_CONCURRENT_POSITIONS"
+    ORDERBOOK_DEPTH = "ORDERBOOK_DEPTH"
+    SPREAD_TOO_WIDE = "SPREAD_TOO_WIDE"
+
+
+class Position(BaseModel):
+    """An open position tracked by the risk system."""
+
+    token_id: str
+    condition_id: str = ""
+    side: Side = Side.BUY
+    entry_price: Decimal = Decimal("0")
+    size: Decimal = Decimal("0")
+    opened_at: float = 0.0
+    last_updated: float = 0.0
+
+
+class RiskVerdict(BaseModel):
+    """Result of a risk gate check."""
+
+    approved: bool = True
+    reason: RiskRejectionReason | None = None
+    detail: str = ""
+
+
+class RiskEvent(BaseModel):
+    """Event emitted by the risk monitor."""
+
+    event_type: RiskEventType
+    position: Position | None = None
+    verdict: RiskVerdict | None = None
+    daily_pnl: Decimal | None = None
     reason: str = ""
     timestamp: float = 0.0

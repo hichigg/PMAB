@@ -18,6 +18,8 @@ risk:
   min_confidence: 0.99
   min_orderbook_depth_usd: 500
   max_spread: 0.10
+  max_concurrent_positions: 10
+  bankroll_usd: 10000
 
 scanner:
   scan_interval_secs: 60

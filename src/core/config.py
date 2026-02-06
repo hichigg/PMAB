@@ -42,6 +42,8 @@ class RiskConfig(BaseModel):
     min_confidence: float = 0.99
     min_orderbook_depth_usd: float = 500.0
     max_spread: float = 0.10
+    max_concurrent_positions: int = 10
+    bankroll_usd: float = 10000.0
 
 
 class LoggingConfig(BaseModel):

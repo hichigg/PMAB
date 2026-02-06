@@ -24,6 +24,7 @@ from src.core.types import (
 )
 from src.polymarket.client import PolymarketClient
 from src.polymarket.scanner import MarketScanner
+from src.risk.monitor import RiskMonitor
 from src.strategy.matcher import MarketMatcher
 from src.strategy.signals import SignalGenerator
 from src.strategy.sizer import PositionSizer
@@ -59,6 +60,7 @@ class ArbEngine:
         scanner: MarketScanner,
         config: StrategyConfig | None = None,
         risk_config: RiskConfig | None = None,
+        risk_monitor: RiskMonitor | None = None,
     ) -> None:
         settings = get_settings()
         self._client = client
@@ -69,6 +71,7 @@ class ArbEngine:
         self._matcher = MarketMatcher(self._config.match_confidence_threshold)
         self._signal_gen = SignalGenerator(self._config)
         self._sizer = PositionSizer(self._config, self._risk)
+        self._risk_monitor = risk_monitor
 
         self._callbacks: list[ArbEventCallback] = []
         self._lock = asyncio.Lock()
@@ -94,6 +97,13 @@ class ArbEngine:
     def running(self) -> bool:
         """Whether the engine is currently running."""
         return self._running
+
+    @property
+    def risk_snapshot(self) -> dict[str, object] | None:
+        """Current risk state, or None if no risk monitor configured."""
+        if self._risk_monitor is None:
+            return None
+        return self._risk_monitor.snapshot()
 
     def on_event(self, callback: ArbEventCallback) -> None:
         """Register a callback for arb engine events."""
@@ -213,6 +223,20 @@ class ArbEngine:
             ))
             return None
 
+        # Risk check
+        if self._risk_monitor is not None:
+            verdict = self._risk_monitor.check_trade(action)
+            if not verdict.approved:
+                self._trades_skipped += 1
+                await self._emit(ArbEvent(
+                    event_type=ArbEventType.RISK_REJECTED,
+                    signal=signal,
+                    action=action,
+                    reason=verdict.detail,
+                    timestamp=time.time(),
+                ))
+                return None
+
         # Execute
         result = await self._execute_action(action)
         return result
@@ -258,6 +282,8 @@ class ArbEngine:
 
             if response.success:
                 self._trades_executed += 1
+                if self._risk_monitor is not None:
+                    await self._risk_monitor.record_fill(result)
                 logger.info(
                     "trade_executed",
                     token_id=action.token_id,
