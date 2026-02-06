@@ -1,0 +1,45 @@
+# Copy this file to settings.yaml and fill in your values.
+# settings.yaml is gitignored — never commit real credentials.
+
+polymarket:
+  # CLOB API credentials (derived via py-clob-client auth flow)
+  api_key: ""
+  api_secret: ""
+  api_passphrase: ""
+  # Polygon wallet
+  private_key: ""
+  chain_id: 137  # Polygon mainnet
+
+risk:
+  max_daily_loss_usd: 500
+  max_position_usd: 5000
+  max_bankroll_pct_per_event: 0.20
+  min_profit_usd: 10
+  min_confidence: 0.99
+  min_orderbook_depth_usd: 500
+  max_spread: 0.10
+
+feeds:
+  economic:
+    enabled: true
+    source: bls_scraper  # or alphaflash
+    poll_interval_ms: 100
+  sports:
+    enabled: false
+    source: espn  # or sportradar
+  crypto:
+    enabled: false
+    exchanges: [binance, coinbase]
+
+alerts:
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  discord:
+    enabled: false
+    webhook_url: ""
+
+logging:
+  level: INFO
+  format: json
