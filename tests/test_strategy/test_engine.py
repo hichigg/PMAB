@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.core.config import RiskConfig, StrategyConfig
+from src.core.config import PrioritizerConfig, RiskConfig, StrategyConfig
 from src.core.types import (
     ArbEvent,
     ArbEventType,
@@ -23,6 +23,7 @@ from src.core.types import (
 )
 from src.risk.monitor import RiskMonitor
 from src.strategy.engine import ArbEngine
+from src.strategy.prioritizer import OpportunityPrioritizer
 
 # ── Helpers ─────────────────────────────────────────────────────
 
@@ -233,7 +234,9 @@ class TestOnFeedEvent:
     async def test_stats_accumulate(self) -> None:
         """Stats increment across multiple events."""
         opps = {"cond1": _opp()}
-        engine = _make_engine(opportunities=opps)
+        cfg = _cfg()
+        cfg.prioritizer = PrioritizerConfig(cooldown_secs=0.0)
+        engine = _make_engine(opportunities=opps, config=cfg)
         await engine.start()
 
         await engine.on_feed_event(_event())
@@ -586,3 +589,103 @@ class TestRiskIntegration:
         """risk_snapshot is None when no monitor configured."""
         engine = _make_engine()
         assert engine.risk_snapshot is None
+
+
+# ── Prioritizer Integration ──────────────────────────────────────
+
+
+class TestPrioritizerIntegration:
+    @pytest.mark.asyncio
+    async def test_cap_limits_trades(self) -> None:
+        """Prioritizer cap limits number of trades per event."""
+        opps = {
+            f"c{i}": _opp(
+                condition_id=f"c{i}",
+                question=f"Will CPI be above {i}.0%?",
+            )
+            for i in range(5)
+        }
+        prio_cfg = PrioritizerConfig(max_trades_per_event=2)
+        cfg = _cfg()
+        cfg.prioritizer = prio_cfg
+        engine = _make_engine(opportunities=opps, config=cfg)
+
+        results = await engine.process_event(_event())
+        assert len(results) <= 2
+
+    @pytest.mark.asyncio
+    async def test_cooldown_skips_market(self) -> None:
+        """After a successful trade, the same market is skipped."""
+        opps = {"cond1": _opp()}
+        prio_cfg = PrioritizerConfig(max_trades_per_event=10, cooldown_secs=300.0)
+        cfg = _cfg()
+        cfg.prioritizer = prio_cfg
+        engine = _make_engine(opportunities=opps, config=cfg)
+
+        # First event: should produce a trade
+        results1 = await engine.process_event(_event())
+        assert len(results1) >= 1
+        assert results1[0].success is True
+
+        # Second event: same market on cooldown → no trades
+        results2 = await engine.process_event(_event())
+        assert len(results2) == 0
+
+    @pytest.mark.asyncio
+    async def test_injectable_prioritizer(self) -> None:
+        """Custom prioritizer can be injected into ArbEngine."""
+        opps = {"cond1": _opp()}
+        prio = OpportunityPrioritizer(PrioritizerConfig(max_trades_per_event=1))
+
+        client = MagicMock()
+        response = OrderResponse(
+            order_id="order123", success=True, raw={"orderID": "order123"},
+        )
+        client.place_market_order = AsyncMock(return_value=response)
+        scanner = MagicMock()
+        scanner.opportunities = opps
+
+        engine = ArbEngine(
+            client=client,
+            scanner=scanner,
+            config=_cfg(),
+            risk_config=_risk(),
+            prioritizer=prio,
+        )
+
+        results = await engine.process_event(_event())
+        assert len(results) >= 1
+
+    @pytest.mark.asyncio
+    async def test_backward_compat(self) -> None:
+        """Engine creates a default prioritizer when none is provided."""
+        opps = {"cond1": _opp()}
+        engine = _make_engine(opportunities=opps)
+        # Should work without explicit prioritizer
+        results = await engine.process_event(_event())
+        assert isinstance(results, list)
+
+    @pytest.mark.asyncio
+    async def test_cooldown_recorded_on_success(self) -> None:
+        """Cooldown is recorded when trade succeeds."""
+        opps = {"cond1": _opp()}
+        prio = OpportunityPrioritizer(PrioritizerConfig(cooldown_secs=300.0))
+
+        client = MagicMock()
+        response = OrderResponse(
+            order_id="order123", success=True, raw={"orderID": "order123"},
+        )
+        client.place_market_order = AsyncMock(return_value=response)
+        scanner = MagicMock()
+        scanner.opportunities = opps
+
+        engine = ArbEngine(
+            client=client,
+            scanner=scanner,
+            config=_cfg(),
+            risk_config=_risk(),
+            prioritizer=prio,
+        )
+
+        await engine.process_event(_event())
+        assert "cond1" in prio.cooldowns

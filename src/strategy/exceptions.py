@@ -19,5 +19,9 @@ class SizingError(StrategyError):
     """Raised when position sizing fails."""
 
 
+class PrioritizationError(StrategyError):
+    """Raised when opportunity prioritization fails."""
+
+
 class ExecutionError(StrategyError):
     """Raised when order execution fails in the strategy layer."""

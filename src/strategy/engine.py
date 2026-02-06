@@ -26,6 +26,7 @@ from src.polymarket.client import PolymarketClient
 from src.polymarket.scanner import MarketScanner
 from src.risk.monitor import RiskMonitor
 from src.strategy.matcher import MarketMatcher
+from src.strategy.prioritizer import OpportunityPrioritizer
 from src.strategy.signals import SignalGenerator
 from src.strategy.sizer import PositionSizer
 
@@ -61,6 +62,7 @@ class ArbEngine:
         config: StrategyConfig | None = None,
         risk_config: RiskConfig | None = None,
         risk_monitor: RiskMonitor | None = None,
+        prioritizer: OpportunityPrioritizer | None = None,
     ) -> None:
         settings = get_settings()
         self._client = client
@@ -72,6 +74,9 @@ class ArbEngine:
         self._signal_gen = SignalGenerator(self._config)
         self._sizer = PositionSizer(self._config, self._risk)
         self._risk_monitor = risk_monitor
+        self._prioritizer = prioritizer or OpportunityPrioritizer(
+            self._config.prioritizer,
+        )
 
         self._callbacks: list[ArbEventCallback] = []
         self._lock = asyncio.Lock()
@@ -171,9 +176,18 @@ class ArbEngine:
             logger.debug("no_matches", indicator=event.indicator)
             return results
 
-        for match in matches:
-            result = await self._process_match(match)
+        ranked = self._prioritizer.prioritize(matches)
+        if not ranked:
+            logger.debug("all_matches_filtered", indicator=event.indicator)
+            return results
+
+        for pm in ranked:
+            result = await self._process_match(pm.match)
             if result is not None:
+                if result.success:
+                    self._prioritizer.record_trade(
+                        pm.match.opportunity.condition_id,
+                    )
                 results.append(result)
 
         return results
@@ -187,8 +201,17 @@ class ArbEngine:
             logger.debug("no_matches", indicator=event.indicator)
             return
 
-        for match in matches:
-            await self._process_match(match)
+        ranked = self._prioritizer.prioritize(matches)
+        if not ranked:
+            logger.debug("all_matches_filtered", indicator=event.indicator)
+            return
+
+        for pm in ranked:
+            result = await self._process_match(pm.match)
+            if result is not None and result.success:
+                self._prioritizer.record_trade(
+                    pm.match.opportunity.condition_id,
+                )
 
     async def _process_match(self, match: MatchResult) -> ExecutionResult | None:
         """Signal → size → execute pipeline for a single match."""

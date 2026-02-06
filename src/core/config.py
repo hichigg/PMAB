@@ -118,6 +118,24 @@ class FeedsConfig(BaseModel):
     crypto: CryptoFeedConfig = CryptoFeedConfig()
 
 
+class PrioritizerConfig(BaseModel):
+    """Opportunity prioritization configuration."""
+
+    max_trades_per_event: int = 3
+    cooldown_secs: float = 300.0
+    category_weights: dict[str, float] = {
+        "ECONOMIC": 1.0,
+        "SPORTS": 0.9,
+        "CRYPTO": 0.7,
+        "POLITICS": 0.5,
+        "OTHER": 0.3,
+    }
+    score_weight_opportunity: float = 0.25
+    score_weight_confidence: float = 0.30
+    score_weight_edge: float = 0.30
+    score_weight_category: float = 0.15
+
+
 class StrategyConfig(BaseModel):
     """Core arbitrage strategy configuration."""
 
@@ -135,6 +153,7 @@ class StrategyConfig(BaseModel):
     economic_min_edge: float | None = None
     sports_min_edge: float | None = None
     crypto_min_edge: float | None = None
+    prioritizer: PrioritizerConfig = PrioritizerConfig()
 
 
 class Settings(BaseModel):

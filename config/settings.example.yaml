@@ -71,6 +71,19 @@ strategy:
   # economic_min_edge: 0.03
   # sports_min_edge: 0.05
   # crypto_min_edge: 0.08
+  prioritizer:
+    max_trades_per_event: 3
+    cooldown_secs: 300
+    category_weights:
+      ECONOMIC: 1.0
+      SPORTS: 0.9
+      CRYPTO: 0.7
+      POLITICS: 0.5
+      OTHER: 0.3
+    score_weight_opportunity: 0.25
+    score_weight_confidence: 0.30
+    score_weight_edge: 0.30
+    score_weight_category: 0.15
 
 alerts:
   telegram:

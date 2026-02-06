@@ -342,6 +342,15 @@ class MatchResult(BaseModel):
     match_reason: str = ""
 
 
+class PrioritizedMatch(BaseModel):
+    """A match ranked by composite priority score."""
+
+    match: MatchResult
+    priority_score: float = 0.0
+    score_components: dict[str, float] = Field(default_factory=dict)
+    rank: int = 0
+
+
 class Signal(BaseModel):
     """A trading signal derived from a match between event and market."""
 
