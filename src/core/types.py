@@ -252,3 +252,70 @@ class EconomicRelease(BaseModel):
     released_at: float = 0.0
     source: str = ""
     raw: dict[str, Any] = Field(default_factory=dict)
+
+
+# ── Sports Types ───────────────────────────────────────────────
+
+
+class SportLeague(StrEnum):
+    """Supported sport leagues."""
+
+    NFL = "NFL"
+    NBA = "NBA"
+    MLB = "MLB"
+    NHL = "NHL"
+
+
+class GameStatus(StrEnum):
+    """Status of a sporting event."""
+
+    SCHEDULED = "SCHEDULED"
+    IN_PROGRESS = "IN_PROGRESS"
+    FINAL = "FINAL"
+    DELAYED = "DELAYED"
+    CANCELLED = "CANCELLED"
+
+
+class GameResult(BaseModel):
+    """Result of a completed (or in-progress) sporting event."""
+
+    game_id: str
+    league: SportLeague
+    home_team: str = ""
+    away_team: str = ""
+    home_score: int = 0
+    away_score: int = 0
+    winner: str = ""
+    status: GameStatus = GameStatus.SCHEDULED
+    start_time: float = 0.0
+    completed_at: float = 0.0
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+# ── Crypto Types ───────────────────────────────────────────────
+
+
+class CryptoPair(StrEnum):
+    """Crypto trading pairs tracked by the crypto feed."""
+
+    BTC_USDT = "BTC_USDT"
+    ETH_USDT = "ETH_USDT"
+
+
+class CryptoExchange(StrEnum):
+    """Supported cryptocurrency exchanges."""
+
+    BINANCE = "BINANCE"
+    COINBASE = "COINBASE"
+    KRAKEN = "KRAKEN"
+
+
+class CryptoTicker(BaseModel):
+    """Price ticker from a cryptocurrency exchange."""
+
+    pair: CryptoPair
+    exchange: CryptoExchange
+    price: Decimal
+    change_pct: Decimal = Decimal("0")
+    timestamp: float = 0.0
+    raw: dict[str, Any] = Field(default_factory=dict)

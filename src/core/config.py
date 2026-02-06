@@ -82,17 +82,30 @@ class EconomicFeedConfig(BaseModel):
 
 
 class SportsFeedConfig(BaseModel):
-    """Sports data feed configuration (stub — implementation deferred)."""
+    """Sports data feed configuration — ESPN scoreboard polling."""
 
     enabled: bool = False
     source: str = "espn"
+    poll_interval_ms: int = 10000
+    leagues: list[str] = ["NFL", "NBA", "MLB", "NHL"]
+    base_url: str = "https://site.api.espn.com/apis/site/v2/sports"
 
 
 class CryptoFeedConfig(BaseModel):
-    """Crypto data feed configuration (stub — implementation deferred)."""
+    """Crypto data feed configuration — Binance WS primary + cross-validation."""
 
     enabled: bool = False
-    exchanges: list[str] = ["binance", "coinbase"]
+    exchanges: list[str] = ["binance", "coinbase", "kraken"]
+    pairs: list[str] = ["BTC_USDT", "ETH_USDT"]
+    poll_interval_ms: int = 5000
+    price_move_threshold_pct: float = 2.0
+    cross_validation_threshold_pct: float = 1.0
+    binance_ws_url: str = "wss://stream.binance.com:9443/ws"
+    coinbase_ws_url: str = "wss://advanced-trade-ws.coinbase.com"
+    kraken_ws_url: str = "wss://ws.kraken.com/v2"
+    reconnect_base_secs: float = 1.0
+    reconnect_cap_secs: float = 30.0
+    ping_interval_secs: float = 10.0
 
 
 class FeedsConfig(BaseModel):

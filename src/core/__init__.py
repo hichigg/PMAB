@@ -1,10 +1,12 @@
 """Core module — config, types, logging."""
 
 from src.core.config import (
+    CryptoFeedConfig,
     EconomicFeedConfig,
     FeedsConfig,
     ScannerConfig,
     Settings,
+    SportsFeedConfig,
     get_settings,
     load_settings,
     reset_settings,
@@ -12,11 +14,16 @@ from src.core.config import (
 from src.core.logging import setup_logging
 from src.core.types import (
     CancelResponse,
+    CryptoExchange,
+    CryptoPair,
+    CryptoTicker,
     EconomicIndicator,
     EconomicRelease,
     FeedEvent,
     FeedEventType,
     FeedType,
+    GameResult,
+    GameStatus,
     LiquidityScreen,
     MarketCategory,
     MarketInfo,
@@ -32,10 +39,15 @@ from src.core.types import (
     ScanEventType,
     ScanFilter,
     Side,
+    SportLeague,
 )
 
 __all__ = [
     "CancelResponse",
+    "CryptoExchange",
+    "CryptoFeedConfig",
+    "CryptoPair",
+    "CryptoTicker",
     "EconomicFeedConfig",
     "EconomicIndicator",
     "EconomicRelease",
@@ -43,6 +55,8 @@ __all__ = [
     "FeedEventType",
     "FeedType",
     "FeedsConfig",
+    "GameResult",
+    "GameStatus",
     "LiquidityScreen",
     "MarketCategory",
     "MarketInfo",
@@ -60,6 +74,8 @@ __all__ = [
     "ScannerConfig",
     "Settings",
     "Side",
+    "SportLeague",
+    "SportsFeedConfig",
     "get_settings",
     "load_settings",
     "reset_settings",

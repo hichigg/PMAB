@@ -31,14 +31,27 @@ scanner:
 feeds:
   economic:
     enabled: true
-    source: bls_scraper  # or alphaflash
+    source: bls_scraper
     poll_interval_ms: 100
   sports:
     enabled: false
-    source: espn  # or sportradar
+    source: espn
+    poll_interval_ms: 10000
+    leagues: [NFL, NBA, MLB, NHL]
+    base_url: "https://site.api.espn.com/apis/site/v2/sports"
   crypto:
     enabled: false
-    exchanges: [binance, coinbase]
+    exchanges: [binance, coinbase, kraken]
+    pairs: [BTC_USDT, ETH_USDT]
+    poll_interval_ms: 5000
+    price_move_threshold_pct: 2.0
+    cross_validation_threshold_pct: 1.0
+    binance_ws_url: "wss://stream.binance.com:9443/ws"
+    coinbase_ws_url: "wss://advanced-trade-ws.coinbase.com"
+    kraken_ws_url: "wss://ws.kraken.com/v2"
+    reconnect_base_secs: 1.0
+    reconnect_cap_secs: 30.0
+    ping_interval_secs: 10.0
 
 alerts:
   telegram:
