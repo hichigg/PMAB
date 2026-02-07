@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from src.core.config import RiskConfig
+from src.core.config import KillSwitchConfig, RiskConfig
 from src.core.types import (
     FeedEvent,
     FeedEventType,
@@ -25,6 +25,7 @@ from src.risk.gates import (
     check_daily_loss,
     check_kill_switch,
     check_max_concurrent_positions,
+    check_oracle_risk,
     check_orderbook_depth,
     check_position_concentration,
     check_spread,
@@ -237,3 +238,41 @@ class TestReasonDetail:
     def test_approval_no_reason(self) -> None:
         v = check_kill_switch(False)
         assert v.reason is None
+
+
+# ── Oracle Risk ──────────────────────────────────────────────
+
+
+class TestOracleRisk:
+    def test_approved_no_match(self) -> None:
+        cfg = KillSwitchConfig(oracle_blacklist_patterns=["at discretion of"])
+        v = check_oracle_risk("Will CPI exceed 3.0% in January?", cfg)
+        assert v.approved is True
+
+    def test_rejected_at_discretion_of(self) -> None:
+        cfg = KillSwitchConfig()
+        v = check_oracle_risk(
+            "Resolution at discretion of the committee", cfg,
+        )
+        assert v.approved is False
+        assert v.reason == RiskRejectionReason.ORACLE_RISK
+
+    def test_rejected_as_determined_by(self) -> None:
+        cfg = KillSwitchConfig()
+        v = check_oracle_risk(
+            "Winner as determined by the panel", cfg,
+        )
+        assert v.approved is False
+        assert v.reason == RiskRejectionReason.ORACLE_RISK
+
+    def test_case_insensitive(self) -> None:
+        cfg = KillSwitchConfig(
+            oracle_blacklist_patterns=["subject to interpretation"],
+        )
+        v = check_oracle_risk("This is SUBJECT TO INTERPRETATION by experts", cfg)
+        assert v.approved is False
+
+    def test_empty_patterns_passes(self) -> None:
+        cfg = KillSwitchConfig(oracle_blacklist_patterns=[])
+        v = check_oracle_risk("at discretion of someone", cfg)
+        assert v.approved is True

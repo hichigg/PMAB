@@ -16,6 +16,7 @@ from src.core.types import (
     FeedEvent,
     FeedEventType,
     FeedType,
+    KillSwitchTrigger,
     MarketCategory,
     MarketOpportunity,
     OrderResponse,
@@ -513,7 +514,7 @@ class TestRiskIntegration:
         """Kill switch active → trade skipped."""
         opps = {"cond1": _opp()}
         monitor = RiskMonitor(config=_risk())
-        monitor._killed = True
+        monitor._kill_switch.trigger("test", KillSwitchTrigger.MANUAL)
         engine = _make_engine_with_risk(opportunities=opps, risk_monitor=monitor)
 
         results = await engine.process_event(_event())
@@ -557,7 +558,7 @@ class TestRiskIntegration:
         """RISK_REJECTED event is emitted when risk gate rejects."""
         opps = {"cond1": _opp()}
         monitor = RiskMonitor(config=_risk())
-        monitor._killed = True
+        monitor._kill_switch.trigger("test", KillSwitchTrigger.MANUAL)
         engine = _make_engine_with_risk(opportunities=opps, risk_monitor=monitor)
         events: list[ArbEvent] = []
         engine.on_event(lambda e: events.append(e))
@@ -570,7 +571,7 @@ class TestRiskIntegration:
         """trades_skipped increments on risk rejection."""
         opps = {"cond1": _opp()}
         monitor = RiskMonitor(config=_risk())
-        monitor._killed = True
+        monitor._kill_switch.trigger("test", KillSwitchTrigger.MANUAL)
         engine = _make_engine_with_risk(opportunities=opps, risk_monitor=monitor)
 
         initial = engine.stats["trades_skipped"]

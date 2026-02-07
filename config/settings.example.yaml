@@ -20,6 +20,19 @@ risk:
   max_spread: 0.10
   max_concurrent_positions: 10
   bankroll_usd: 10000
+  kill_switch:
+    max_consecutive_losses: 5
+    error_window_trades: 10
+    max_error_rate_pct: 50.0
+    connectivity_max_errors: 5
+    connectivity_max_latency_ms: 5000
+    oracle_blacklist_patterns:
+      - "at discretion of"
+      - "as determined by"
+      - "in the sole judgment"
+      - "at the option of"
+      - "may be adjusted"
+      - "subject to interpretation"
 
 scanner:
   scan_interval_secs: 60

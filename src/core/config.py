@@ -32,6 +32,24 @@ class RateLimitConfig(BaseModel):
     sustained_per_sec: int = 60
 
 
+class KillSwitchConfig(BaseModel):
+    """Kill switch configuration — thresholds for auto-triggers."""
+
+    max_consecutive_losses: int = 5
+    error_window_trades: int = 10
+    max_error_rate_pct: float = 50.0
+    connectivity_max_errors: int = 5
+    connectivity_max_latency_ms: float = 5000.0
+    oracle_blacklist_patterns: list[str] = [
+        "at discretion of",
+        "as determined by",
+        "in the sole judgment",
+        "at the option of",
+        "may be adjusted",
+        "subject to interpretation",
+    ]
+
+
 class RiskConfig(BaseModel):
     """Risk management configuration."""
 
@@ -44,6 +62,7 @@ class RiskConfig(BaseModel):
     max_spread: float = 0.10
     max_concurrent_positions: int = 10
     bankroll_usd: float = 10000.0
+    kill_switch: KillSwitchConfig = KillSwitchConfig()
 
 
 class LoggingConfig(BaseModel):

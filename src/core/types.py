@@ -430,11 +430,31 @@ class RiskRejectionReason(StrEnum):
     """Reason a trade was rejected by a risk gate."""
 
     KILL_SWITCH_ACTIVE = "KILL_SWITCH_ACTIVE"
+    ORACLE_RISK = "ORACLE_RISK"
     DAILY_LOSS_LIMIT = "DAILY_LOSS_LIMIT"
     POSITION_CONCENTRATION = "POSITION_CONCENTRATION"
     MAX_CONCURRENT_POSITIONS = "MAX_CONCURRENT_POSITIONS"
     ORDERBOOK_DEPTH = "ORDERBOOK_DEPTH"
     SPREAD_TOO_WIDE = "SPREAD_TOO_WIDE"
+
+
+class KillSwitchTrigger(StrEnum):
+    """What caused the kill switch to activate."""
+
+    DAILY_LOSS = "DAILY_LOSS"
+    CONSECUTIVE_LOSSES = "CONSECUTIVE_LOSSES"
+    ERROR_RATE = "ERROR_RATE"
+    CONNECTIVITY = "CONNECTIVITY"
+    MANUAL = "MANUAL"
+
+
+class KillSwitchState(BaseModel):
+    """Snapshot of kill switch state."""
+
+    active: bool = False
+    trigger: KillSwitchTrigger | None = None
+    triggered_at: float = 0.0
+    reason: str = ""
 
 
 class Position(BaseModel):

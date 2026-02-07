@@ -5,16 +5,19 @@ from src.risk.gates import (
     check_daily_loss,
     check_kill_switch,
     check_max_concurrent_positions,
+    check_oracle_risk,
     check_orderbook_depth,
     check_position_concentration,
     check_spread,
 )
+from src.risk.kill_switch import KillSwitchManager
 from src.risk.monitor import RiskEventCallback, RiskMonitor
 from src.risk.pnl import PnLTracker
 from src.risk.positions import PositionTracker
 
 __all__ = [
     "KillSwitchActiveError",
+    "KillSwitchManager",
     "PnLTracker",
     "PositionTracker",
     "RiskError",
@@ -24,6 +27,7 @@ __all__ = [
     "check_daily_loss",
     "check_kill_switch",
     "check_max_concurrent_positions",
+    "check_oracle_risk",
     "check_orderbook_depth",
     "check_position_concentration",
     "check_spread",

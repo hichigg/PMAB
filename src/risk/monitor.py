@@ -12,6 +12,8 @@ import structlog
 from src.core.config import RiskConfig
 from src.core.types import (
     ExecutionResult,
+    KillSwitchState,
+    KillSwitchTrigger,
     RiskEvent,
     RiskEventType,
     RiskVerdict,
@@ -21,10 +23,12 @@ from src.risk.gates import (
     check_daily_loss,
     check_kill_switch,
     check_max_concurrent_positions,
+    check_oracle_risk,
     check_orderbook_depth,
     check_position_concentration,
     check_spread,
 )
+from src.risk.kill_switch import KillSwitchManager
 from src.risk.pnl import PnLTracker
 from src.risk.positions import PositionTracker
 
@@ -55,7 +59,7 @@ class RiskMonitor:
         self._config = config or get_settings().risk
         self._positions = PositionTracker()
         self._pnl = PnLTracker()
-        self._killed = False
+        self._kill_switch = KillSwitchManager(self._config.kill_switch)
         self._callbacks: list[RiskEventCallback] = []
 
     @property
@@ -71,7 +75,12 @@ class RiskMonitor:
     @property
     def killed(self) -> bool:
         """Whether the kill switch is active."""
-        return self._killed
+        return self._kill_switch.active
+
+    @property
+    def kill_switch_state(self) -> KillSwitchState:
+        """Full kill switch state snapshot."""
+        return self._kill_switch.state
 
     def on_event(self, callback: RiskEventCallback) -> None:
         """Register a callback for risk events."""
@@ -96,35 +105,41 @@ class RiskMonitor:
         Returns the first rejection, or an approved verdict if all pass.
         """
         # 1. Kill switch (highest priority)
-        verdict = check_kill_switch(self._killed)
+        verdict = check_kill_switch(self._kill_switch.active)
         if not verdict.approved:
             return verdict
 
-        # 2. Daily loss limit
+        # 2. Oracle risk filter
+        question = action.signal.match.opportunity.question
+        verdict = check_oracle_risk(question, self._config.kill_switch)
+        if not verdict.approved:
+            return verdict
+
+        # 3. Daily loss limit
         verdict = check_daily_loss(self._pnl, self._config)
         if not verdict.approved:
             return verdict
 
-        # 3. Position concentration
+        # 4. Position concentration
         verdict = check_position_concentration(
             action, self._positions.positions, self._config,
         )
         if not verdict.approved:
             return verdict
 
-        # 4. Max concurrent positions
+        # 5. Max concurrent positions
         verdict = check_max_concurrent_positions(
             self._positions.positions, self._config,
         )
         if not verdict.approved:
             return verdict
 
-        # 5. Orderbook depth
+        # 6. Orderbook depth
         verdict = check_orderbook_depth(action, self._config)
         if not verdict.approved:
             return verdict
 
-        # 6. Spread
+        # 7. Spread
         verdict = check_spread(action, self._config)
         if not verdict.approved:
             return verdict
@@ -134,7 +149,8 @@ class RiskMonitor:
     async def record_fill(self, result: ExecutionResult) -> None:
         """Record a successful fill — update positions and P&L.
 
-        May auto-trigger the kill switch if daily loss breached.
+        May auto-trigger the kill switch if daily loss or trade counters
+        breach thresholds.
         """
         existing = self._positions.get(result.action.token_id)
         pnl_amount = self._pnl.record_fill(result, existing)
@@ -156,10 +172,15 @@ class RiskMonitor:
         # Auto-trigger kill switch if daily loss limit breached
         if pnl_amount < 0:
             limit = Decimal(str(self._config.max_daily_loss_usd))
-            if self._pnl.realized_today < -limit and not self._killed:
-                self._killed = True
+            if self._pnl.realized_today < -limit and not self._kill_switch.active:
+                self._kill_switch.trigger(
+                    f"Daily loss ${self._pnl.realized_today}"
+                    f" breached -${limit} limit",
+                    KillSwitchTrigger.DAILY_LOSS,
+                )
                 logger.warning(
                     "kill_switch_triggered",
+                    trigger="DAILY_LOSS",
                     daily_pnl=str(self._pnl.realized_today),
                     limit=str(limit),
                 )
@@ -173,9 +194,42 @@ class RiskMonitor:
                     timestamp=time.time(),
                 ))
 
+        # Record trade result for consecutive-loss / error-rate triggers
+        trade_success = pnl_amount >= 0
+        trigger = self._kill_switch.record_trade_result(trade_success)
+        if trigger is not None:
+            logger.warning(
+                "kill_switch_triggered",
+                trigger=trigger.value,
+            )
+            await self._emit(RiskEvent(
+                event_type=RiskEventType.KILL_SWITCH_TRIGGERED,
+                reason=self._kill_switch.state.reason,
+                timestamp=time.time(),
+            ))
+
+    async def record_api_result(
+        self, success: bool, latency_ms: float = 0,
+    ) -> None:
+        """Record an API call result for connectivity health tracking."""
+        if success:
+            self._kill_switch.record_api_success()
+        else:
+            trigger = self._kill_switch.record_api_error()
+            if trigger is not None:
+                logger.warning(
+                    "kill_switch_triggered",
+                    trigger=trigger.value,
+                )
+                await self._emit(RiskEvent(
+                    event_type=RiskEventType.KILL_SWITCH_TRIGGERED,
+                    reason=self._kill_switch.state.reason,
+                    timestamp=time.time(),
+                ))
+
     async def reset_kill_switch(self) -> None:
         """Manually reset the kill switch."""
-        self._killed = False
+        self._kill_switch.reset()
         logger.info("kill_switch_reset")
         await self._emit(RiskEvent(
             event_type=RiskEventType.KILL_SWITCH_RESET,
@@ -186,8 +240,11 @@ class RiskMonitor:
     def snapshot(self) -> dict[str, object]:
         """Return a snapshot of current risk state."""
         self._pnl._maybe_reset_day()
+        ks = self._kill_switch.state
         return {
-            "killed": self._killed,
+            "killed": self._kill_switch.active,
+            "kill_switch_trigger": ks.trigger.value if ks.trigger else None,
+            "kill_switch_reason": ks.reason,
             "open_positions": self._positions.count,
             "total_exposure_usd": float(self._positions.total_exposure_usd()),
             "realized_today": float(self._pnl.realized_today),

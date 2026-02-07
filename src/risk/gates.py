@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from src.core.config import RiskConfig
+from src.core.config import KillSwitchConfig, RiskConfig
 from src.core.types import (
     Position,
     RiskRejectionReason,
@@ -22,6 +22,22 @@ def check_kill_switch(killed: bool) -> RiskVerdict:
             reason=RiskRejectionReason.KILL_SWITCH_ACTIVE,
             detail="Kill switch is active — all trading halted",
         )
+    return RiskVerdict(approved=True)
+
+
+def check_oracle_risk(
+    question: str,
+    config: KillSwitchConfig,
+) -> RiskVerdict:
+    """Reject if the market question matches oracle ambiguity patterns."""
+    lower_question = question.lower()
+    for pattern in config.oracle_blacklist_patterns:
+        if pattern.lower() in lower_question:
+            return RiskVerdict(
+                approved=False,
+                reason=RiskRejectionReason.ORACLE_RISK,
+                detail=f"Market question matches blacklist pattern: '{pattern}'",
+            )
     return RiskVerdict(approved=True)
 
 
