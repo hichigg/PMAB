@@ -218,6 +218,31 @@ class StrategyConfig(BaseModel):
     prioritizer: PrioritizerConfig = PrioritizerConfig()
 
 
+class CategoryStrategyConfig(BaseModel):
+    """Per-category strategy overrides loaded from config/strategies/*.yaml."""
+
+    category: str = ""
+    data_source: str = ""
+    min_confidence: float | None = None
+    min_edge: float | None = None
+    max_staleness_secs: float | None = None
+    base_size_usd: float | None = None
+    max_size_usd: float | None = None
+    kelly_fraction: float | None = None
+    use_kelly_sizing: bool | None = None
+    order_type: str | None = None
+    pre_sign_orders: bool | None = None
+    max_slippage: float | None = None
+    min_profit_usd: float | None = None
+    max_position_usd: float | None = None
+    fee_rate_bps: int | None = None
+    fee_override_min_profit_usd: float | None = None
+    market_patterns: list[str] = Field(default_factory=list)
+    priority_weight: float | None = None
+    max_trades_per_event: int | None = None
+    cooldown_secs: float | None = None
+
+
 class Settings(BaseModel):
     """Root settings container."""
 
@@ -267,3 +292,38 @@ def reset_settings() -> None:
     """Reset the cached settings (useful for testing)."""
     global _settings  # noqa: PLW0603
     _settings = None
+
+
+_DEFAULT_STRATEGIES_DIR = Path("config/strategies")
+
+
+def load_category_strategies(
+    directory: str | Path | None = None,
+) -> dict[str, CategoryStrategyConfig]:
+    """Load per-category strategy configs from YAML files in a directory.
+
+    Args:
+        directory: Path to strategies directory. Defaults to config/strategies/.
+
+    Returns:
+        Mapping of uppercase category name to CategoryStrategyConfig.
+    """
+    strategies_dir = Path(directory) if directory else _DEFAULT_STRATEGIES_DIR
+    configs: dict[str, CategoryStrategyConfig] = {}
+
+    if not strategies_dir.is_dir():
+        return configs
+
+    for yaml_file in sorted(strategies_dir.glob("*.yaml")):
+        try:
+            with open(yaml_file) as f:
+                raw = yaml.safe_load(f)
+            if not isinstance(raw, dict):
+                continue
+            cfg = CategoryStrategyConfig(**raw)
+            key = cfg.category.upper() or yaml_file.stem.upper()
+            configs[key] = cfg
+        except Exception:
+            pass  # skip malformed files
+
+    return configs

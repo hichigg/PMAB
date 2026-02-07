@@ -1,0 +1,45 @@
+# Crypto market strategy — daily/weekly price target markets only
+# WARNING: 15-minute crypto markets carry 3.15% fees — avoid those.
+# Only target daily/weekly expiry where fees are zero or negligible.
+
+category: CRYPTO
+data_source: binance
+
+# Strategy overrides — higher edge required due to competition
+min_confidence: 0.99
+min_edge: 0.08
+max_staleness_secs: 10.0  # crypto data is near-instant
+
+# Sizing — smaller due to higher volatility
+base_size_usd: 50.0
+max_size_usd: 500.0
+kelly_fraction: 0.15
+use_kelly_sizing: false
+
+# Execution
+order_type: FOK
+pre_sign_orders: true
+max_slippage: 0.02
+
+# Risk
+min_profit_usd: 20.0
+max_position_usd: 2000.0
+fee_rate_bps: 0  # reject markets with fees unless overridden
+fee_override_min_profit_usd: 100.0
+
+# Market identification patterns
+market_patterns:
+  - "Bitcoin"
+  - "BTC"
+  - "Ethereum"
+  - "ETH"
+  - "crypto"
+  - "above $"
+  - "below $"
+  - "price"
+  - "midnight UTC"
+
+# Prioritization
+priority_weight: 0.7
+max_trades_per_event: 2
+cooldown_secs: 600.0  # longer cooldown — crypto markets are persistent

@@ -1,0 +1,50 @@
+# Sports market strategy — NFL, NBA, MLB, NHL game outcomes
+# Focus on game-ending events where outcome is certain.
+# Polymarket imposes a 3-second marketable order delay on sports.
+
+category: SPORTS
+data_source: espn
+
+# Strategy overrides
+min_confidence: 0.99
+min_edge: 0.05
+max_staleness_secs: 15.0  # tighter window due to broadcast delay
+
+# Sizing — more conservative due to sports delay
+base_size_usd: 100.0
+max_size_usd: 1000.0
+kelly_fraction: 0.20
+use_kelly_sizing: false
+
+# Execution
+order_type: FOK
+pre_sign_orders: true
+max_slippage: 0.03  # slightly higher slippage tolerance
+
+# Risk
+min_profit_usd: 15.0
+max_position_usd: 3000.0
+fee_rate_bps: 0
+
+# Market identification patterns
+market_patterns:
+  - "Super Bowl"
+  - "World Series"
+  - "Stanley Cup"
+  - "NBA Finals"
+  - "NFL"
+  - "NBA"
+  - "MLB"
+  - "NHL"
+  - "playoff"
+  - "championship"
+  - "win"
+  - "beat"
+  - "over/under"
+  - "spread"
+  - "moneyline"
+
+# Prioritization
+priority_weight: 0.9
+max_trades_per_event: 2
+cooldown_secs: 60.0  # shorter cooldown for rapid game endings

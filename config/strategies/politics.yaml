@@ -1,0 +1,45 @@
+# Politics market strategy — elections, legislation, appointments
+# Lower priority: outcomes are slower-moving and harder to verify in real-time.
+# Primarily useful for pre-positioned trades around scheduled events
+# (e.g., election night, vote counts, confirmation hearings).
+
+category: POLITICS
+data_source: manual  # no automated feed — manual trigger only
+
+# Strategy overrides — very conservative
+min_confidence: 0.995
+min_edge: 0.10
+max_staleness_secs: 120.0
+
+# Sizing — small positions
+base_size_usd: 50.0
+max_size_usd: 500.0
+kelly_fraction: 0.10
+use_kelly_sizing: false
+
+# Execution
+order_type: FOK
+pre_sign_orders: false  # outcomes less predictable in advance
+max_slippage: 0.02
+
+# Risk
+min_profit_usd: 20.0
+max_position_usd: 1000.0
+fee_rate_bps: 0
+
+# Market identification patterns
+market_patterns:
+  - "election"
+  - "president"
+  - "congress"
+  - "senate"
+  - "governor"
+  - "vote"
+  - "inauguration"
+  - "impeach"
+  - "confirmation"
+
+# Prioritization
+priority_weight: 0.5
+max_trades_per_event: 1
+cooldown_secs: 900.0

@@ -1,0 +1,45 @@
+# Economic market strategy — Fed rate decisions, CPI, NFP, GDP, PPI
+# Zero-fee markets with highest confidence requirements.
+
+category: ECONOMIC
+data_source: bls_scraper
+
+# Strategy overrides (applied on top of base strategy config)
+min_confidence: 0.99
+min_edge: 0.03
+max_staleness_secs: 30.0
+
+# Sizing
+base_size_usd: 200.0
+max_size_usd: 2000.0
+kelly_fraction: 0.25
+use_kelly_sizing: false
+
+# Execution
+order_type: FOK
+pre_sign_orders: true
+max_slippage: 0.02
+
+# Risk
+min_profit_usd: 10.0
+max_position_usd: 5000.0
+fee_rate_bps: 0  # zero fees on economic markets
+
+# Market identification patterns (matched against Polymarket question text)
+market_patterns:
+  - "Fed rate"
+  - "FOMC"
+  - "interest rate"
+  - "CPI"
+  - "inflation"
+  - "Non-Farm Payroll"
+  - "NFP"
+  - "unemployment rate"
+  - "GDP"
+  - "PPI"
+  - "producer price"
+
+# Prioritization
+priority_weight: 1.0
+max_trades_per_event: 3
+cooldown_secs: 300.0

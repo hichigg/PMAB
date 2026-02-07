@@ -1,0 +1,26 @@
+[Unit]
+Description=Polymarket Latency Arbitrage Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=botuser
+Group=botuser
+WorkingDirectory=/opt/polymarket-arb
+EnvironmentFile=/opt/polymarket-arb/.env
+ExecStart=/opt/polymarket-arb/.venv/bin/python scripts/run.py --config config/settings.yaml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/polymarket-arb
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

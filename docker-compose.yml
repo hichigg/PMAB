@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  bot:
+    build: .
+    container_name: polymarket-arb
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Mount config so changes don't require rebuild
+      - ./config:/app/config:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    # Override CMD to use env-based log level
+    command: ["--config", "config/settings.yaml", "--log-level", "${LOG_LEVEL:-INFO}"]
