@@ -116,6 +116,11 @@ alerts:
     enabled: false
     webhook_url: ""
 
+paper_trading:
+  fill_probability: 1.0      # 1.0 = all orders fill, <1.0 = simulate random failures
+  slippage_bps: 5             # simulated slippage in basis points
+  orderbook_refresh_secs: 30  # how often to refresh real orderbook data
+
 logging:
   level: INFO
   format: json

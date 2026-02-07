@@ -35,9 +35,11 @@ class AlertDispatcher:
         self,
         channels: list[NotificationChannel] | None = None,
         throttle_secs: float = 30.0,
+        paper_mode: bool = False,
     ) -> None:
         self._channels: list[NotificationChannel] = channels or []
         self._throttle_secs = throttle_secs
+        self._paper_mode = paper_mode
         # Tracks the last dispatch time per source_event_type.
         self._last_sent: dict[str, float] = {}
 
@@ -69,6 +71,10 @@ class AlertDispatcher:
     # ── Internal routing ────────────────────────────────────────
 
     async def _handle(self, msg: AlertMessage) -> None:
+        # Prefix title in paper mode.
+        if self._paper_mode and not msg.title.startswith("[PAPER]"):
+            msg = msg.model_copy(update={"title": f"[PAPER] {msg.title}"})
+
         # Always log the full decision.
         self._log_decision(msg)
 

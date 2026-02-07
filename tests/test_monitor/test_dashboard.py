@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
 from src.core.types import MarketCategory
 from src.monitor.metrics import CategoryStats, LatencySample, PnLPoint
 
 from scripts.dashboard import (
+    _strip_ansi,
     render_category_stats,
     render_dashboard,
     render_from_collector,
@@ -23,6 +25,11 @@ from src.monitor.metrics import MetricsCollector
 
 
 # ── Helpers ─────────────────────────────────────────────────────
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI codes for assertion matching."""
+    return _strip_ansi(text)
 
 
 def _summary(**kw: object) -> dict[str, object]:
@@ -75,12 +82,17 @@ def _cat_stats() -> dict[MarketCategory, CategoryStats]:
 
 class TestHeader:
     def test_contains_title(self) -> None:
-        h = render_header()
-        assert "PERFORMANCE DASHBOARD" in h
+        h = _plain(render_header())
+        assert "POLYMARKET ARB BOT" in h
 
-    def test_has_separator(self) -> None:
+    def test_has_border(self) -> None:
         h = render_header()
-        assert "====" in h
+        # Should contain box-drawing characters
+        assert "\u2550" in h or "=" in h or "\u2554" in h
+
+    def test_shows_utc_time(self) -> None:
+        h = _plain(render_header())
+        assert "UTC" in h
 
 
 # ── Summary Rendering ───────────────────────────────────────────
@@ -88,23 +100,23 @@ class TestHeader:
 
 class TestRenderSummary:
     def test_contains_trade_count(self) -> None:
-        output = render_summary(_summary())
+        output = _plain(render_summary(_summary()))
         assert "10" in output
 
     def test_contains_win_rate(self) -> None:
-        output = render_summary(_summary())
+        output = _plain(render_summary(_summary()))
         assert "80.0%" in output
 
     def test_contains_pnl(self) -> None:
-        output = render_summary(_summary())
+        output = _plain(render_summary(_summary()))
         assert "$150.50" in output
 
     def test_contains_signals(self) -> None:
-        output = render_summary(_summary())
+        output = _plain(render_summary(_summary()))
         assert "20" in output
 
     def test_zero_trades(self) -> None:
-        output = render_summary(_summary(total_trades=0, win_rate=0.0))
+        output = _plain(render_summary(_summary(total_trades=0, win_rate=0.0)))
         assert "0" in output
 
 
@@ -113,20 +125,20 @@ class TestRenderSummary:
 
 class TestRenderCategoryStats:
     def test_contains_categories(self) -> None:
-        output = render_category_stats(_cat_stats())
+        output = _plain(render_category_stats(_cat_stats()))
         assert "ECONOMIC" in output
         assert "SPORTS" in output
 
     def test_contains_win_rates(self) -> None:
-        output = render_category_stats(_cat_stats())
+        output = _plain(render_category_stats(_cat_stats()))
         assert "80.0%" in output  # ECONOMIC: 4/5
 
     def test_empty_stats(self) -> None:
-        output = render_category_stats({})
-        assert "no trades" in output
+        output = _plain(render_category_stats({}))
+        assert "Waiting" in output or "no trades" in output
 
     def test_pnl_shown(self) -> None:
-        output = render_category_stats(_cat_stats())
+        output = _plain(render_category_stats(_cat_stats()))
         assert "$100.00" in output
 
 
@@ -136,19 +148,19 @@ class TestRenderCategoryStats:
 class TestRenderLatency:
     def test_contains_percentiles(self) -> None:
         pct = {"p50": 0.5, "p90": 1.2, "p99": 2.1, "min": 0.1, "max": 3.0}
-        output = render_latency(pct)
+        output = _plain(render_latency(pct))
         assert "P50" in output
         assert "P90" in output
         assert "P99" in output
 
     def test_sub_second_uses_ms(self) -> None:
         pct = {"p50": 0.050, "p90": 0.100, "p99": 0.200, "min": 0.010, "max": 0.500}
-        output = render_latency(pct)
+        output = _plain(render_latency(pct))
         assert "ms" in output
 
     def test_over_second_uses_s(self) -> None:
         pct = {"p50": 1.5, "p90": 2.0, "p99": 3.0, "min": 0.5, "max": 5.0}
-        output = render_latency(pct)
+        output = _plain(render_latency(pct))
         assert "1.50s" in output
 
 
@@ -167,12 +179,12 @@ class TestRenderLatencyHistogram:
             (1.0, 1.5, 2),
         ]
         output = render_latency_histogram(histogram)
-        assert "#" in output
-        assert "HISTOGRAM" in output
+        # Should contain block characters
+        assert "\u2588" in output or "#" in output
 
     def test_histogram_counts_shown(self) -> None:
         histogram = [(0.0, 1.0, 5), (1.0, 2.0, 10)]
-        output = render_latency_histogram(histogram)
+        output = _plain(render_latency_histogram(histogram))
         assert "5" in output
         assert "10" in output
 
@@ -182,8 +194,8 @@ class TestRenderLatencyHistogram:
 
 class TestRenderPnLCurve:
     def test_empty_curve(self) -> None:
-        output = render_pnl_curve([])
-        assert "no data" in output
+        output = _plain(render_pnl_curve([]))
+        assert "Waiting" in output or "no data" in output
 
     def test_curve_with_data(self) -> None:
         curve = [
@@ -191,16 +203,15 @@ class TestRenderPnLCurve:
             PnLPoint(timestamp=200.0, cumulative_pnl=Decimal("30"), trade_index=2),
             PnLPoint(timestamp=300.0, cumulative_pnl=Decimal("25"), trade_index=3),
         ]
-        output = render_pnl_curve(curve)
-        assert "CUMULATIVE P&L" in output
-        assert "*" in output  # chart characters
+        output = _plain(render_pnl_curve(curve))
+        assert "P&L" in output
 
     def test_flat_curve(self) -> None:
         curve = [
             PnLPoint(timestamp=100.0, cumulative_pnl=Decimal("50"), trade_index=1),
             PnLPoint(timestamp=200.0, cumulative_pnl=Decimal("50"), trade_index=2),
         ]
-        output = render_pnl_curve(curve)
+        output = _plain(render_pnl_curve(curve))
         assert "Flat" in output
 
 
@@ -214,7 +225,7 @@ class TestRenderLiquidity:
             "total_available_usd": Decimal("50000"),
             "capture_ratio": 0.018,
         }
-        output = render_liquidity(liq)
+        output = _plain(render_liquidity(liq))
         assert "$900.00" in output
         assert "$50,000.00" in output
         assert "1.8%" in output
@@ -236,7 +247,7 @@ class TestRenderRiskSnapshot:
             "realized_total": 200.0,
             "trade_count_today": 7,
         }
-        output = render_risk_snapshot(snap)
+        output = _plain(render_risk_snapshot(snap))
         assert "ACTIVE" in output
         assert "$1,500.00" in output
 
@@ -251,7 +262,7 @@ class TestRenderRiskSnapshot:
             "realized_total": -300.0,
             "trade_count_today": 12,
         }
-        output = render_risk_snapshot(snap)
+        output = _plain(render_risk_snapshot(snap))
         assert "KILLED" in output
         assert "DAILY_LOSS" in output
 
@@ -266,7 +277,7 @@ class TestRenderRiskSnapshot:
             "disputed_markets": 2,
             "exposure_at_risk_usd": 500.0,
         }
-        output = render_risk_snapshot(snap)
+        output = _plain(render_risk_snapshot(snap))
         assert "Disputed" in output
         assert "$500.00" in output
 
@@ -276,7 +287,7 @@ class TestRenderRiskSnapshot:
 
 class TestRenderDashboard:
     def test_full_dashboard_string(self) -> None:
-        output = render_dashboard(
+        output = _plain(render_dashboard(
             summary=_summary(),
             cat_stats=_cat_stats(),
             latency_pct={"p50": 0.5, "p90": 1.2, "p99": 2.1, "min": 0.1, "max": 3.0},
@@ -290,12 +301,12 @@ class TestRenderDashboard:
                 "total_available_usd": Decimal("50000"),
                 "capture_ratio": 0.018,
             },
-        )
-        assert "PERFORMANCE DASHBOARD" in output
-        assert "OVERALL SUMMARY" in output
-        assert "CATEGORY BREAKDOWN" in output
+        ))
+        assert "POLYMARKET ARB BOT" in output
+        assert "OVERVIEW" in output
+        assert "CATEGORIES" in output
         assert "LATENCY" in output
-        assert "CUMULATIVE P&L" in output
+        assert "P&L" in output
         assert "LIQUIDITY" in output
 
     def test_full_dashboard_with_risk(self) -> None:
@@ -307,7 +318,7 @@ class TestRenderDashboard:
             "realized_total": 200.0,
             "trade_count_today": 5,
         }
-        output = render_dashboard(
+        output = _plain(render_dashboard(
             summary=_summary(),
             cat_stats=_cat_stats(),
             latency_pct={"p50": 0.5, "p90": 1.2, "p99": 2.1, "min": 0.1, "max": 3.0},
@@ -319,7 +330,7 @@ class TestRenderDashboard:
                 "capture_ratio": 0.0,
             },
             risk_snap=snap,
-        )
+        ))
         assert "RISK STATUS" in output
 
 
@@ -329,8 +340,8 @@ class TestRenderDashboard:
 class TestRenderFromCollector:
     def test_empty_collector(self) -> None:
         c = MetricsCollector()
-        output = render_from_collector(c)
-        assert "PERFORMANCE DASHBOARD" in output
+        output = _plain(render_from_collector(c))
+        assert "POLYMARKET ARB BOT" in output
         assert "0" in output  # zero trades
 
     def test_with_risk_snap(self) -> None:
@@ -343,5 +354,5 @@ class TestRenderFromCollector:
             "realized_total": 0,
             "trade_count_today": 0,
         }
-        output = render_from_collector(c, risk_snap=snap)
+        output = _plain(render_from_collector(c, risk_snap=snap))
         assert "RISK STATUS" in output

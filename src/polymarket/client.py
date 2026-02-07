@@ -45,34 +45,54 @@ _ORDER_TYPE_MAP: dict[OrderType, str] = {
 }
 
 
-def _parse_orderbook(token_id: str, raw: dict[str, Any]) -> OrderBook:
-    """Convert SDK order book response to our OrderBook type."""
-    bids = [
-        PriceLevel(price=Decimal(str(b["price"])), size=Decimal(str(b["size"])))
-        for b in raw.get("bids", [])
-    ]
-    asks = [
-        PriceLevel(price=Decimal(str(a["price"])), size=Decimal(str(a["size"])))
-        for a in raw.get("asks", [])
-    ]
+def _parse_orderbook(token_id: str, raw: Any) -> OrderBook:
+    """Convert SDK order book response to our OrderBook type.
+
+    The SDK may return a dict *or* an ``OrderBookSummary`` object,
+    so we handle both accessor patterns.
+    """
+    if isinstance(raw, dict):
+        raw_bids = raw.get("bids", [])
+        raw_asks = raw.get("asks", [])
+    else:
+        raw_bids = getattr(raw, "bids", None) or []
+        raw_asks = getattr(raw, "asks", None) or []
+
+    def _level(entry: Any) -> PriceLevel:
+        if isinstance(entry, dict):
+            return PriceLevel(
+                price=Decimal(str(entry["price"])),
+                size=Decimal(str(entry["size"])),
+            )
+        return PriceLevel(
+            price=Decimal(str(getattr(entry, "price", 0))),
+            size=Decimal(str(getattr(entry, "size", 0))),
+        )
+
+    bids = [_level(b) for b in raw_bids]
+    asks = [_level(a) for a in raw_asks]
     bids.sort(key=lambda x: x.price, reverse=True)
     asks.sort(key=lambda x: x.price)
     return OrderBook(token_id=token_id, bids=bids, asks=asks)
 
 
 def _parse_market(raw: dict[str, Any]) -> MarketInfo:
-    """Convert SDK market response to our MarketInfo type."""
+    """Convert SDK market response to our MarketInfo type.
+
+    The Polymarket API may return ``null`` for optional fields,
+    so we coalesce to safe defaults.
+    """
     return MarketInfo(
-        condition_id=raw.get("condition_id", ""),
-        question=raw.get("question", ""),
-        description=raw.get("description", ""),
-        tokens=raw.get("tokens", []),
+        condition_id=raw.get("condition_id") or "",
+        question=raw.get("question") or "",
+        description=raw.get("description") or "",
+        tokens=raw.get("tokens") or [],
         active=raw.get("active", True),
         closed=raw.get("closed", False),
         accepting_orders=raw.get("accepting_orders", True),
         flagged=raw.get("flagged", False),
-        end_date_iso=raw.get("end_date_iso", ""),
-        tags=raw.get("tags", []),
+        end_date_iso=raw.get("end_date_iso") or "",
+        tags=raw.get("tags") or [],
         raw=raw,
     )
 
@@ -225,7 +245,12 @@ class PolymarketClient:
 
     async def get_orderbook(self, token_id: str) -> OrderBook:
         """Fetch the current order book for a token."""
-        raw = await asyncio.to_thread(self.sdk.get_order_book, token_id)
+        try:
+            raw = await asyncio.to_thread(self.sdk.get_order_book, token_id)
+        except Exception as exc:
+            if "404" in str(exc) or "No orderbook" in str(exc):
+                return OrderBook(token_id=token_id)
+            raise
         return _parse_orderbook(token_id, raw)
 
     async def get_orderbooks(self, token_ids: list[str]) -> list[OrderBook]:

@@ -243,6 +243,14 @@ class CategoryStrategyConfig(BaseModel):
     cooldown_secs: float | None = None
 
 
+class PaperTradingConfig(BaseModel):
+    """Paper trading simulation configuration."""
+
+    fill_probability: float = 1.0
+    slippage_bps: int = 5
+    orderbook_refresh_secs: float = 30.0
+
+
 class Settings(BaseModel):
     """Root settings container."""
 
@@ -254,6 +262,7 @@ class Settings(BaseModel):
     strategy: StrategyConfig = StrategyConfig()
     logging: LoggingConfig = LoggingConfig()
     alerts: AlertsConfig = AlertsConfig()
+    paper_trading: PaperTradingConfig = PaperTradingConfig()
 
 
 def load_settings(path: str | Path | None = None) -> Settings:

@@ -19,6 +19,7 @@ SnapshotFn = Callable[[], dict[str, object]]
 def create_monitor_stack(
     config: AlertsConfig,
     snapshot_fn: SnapshotFn | None = None,
+    paper_mode: bool = False,
 ) -> tuple[AlertDispatcher, DailySummaryScheduler | None]:
     """Build a dispatcher + optional daily scheduler from config.
 
@@ -36,6 +37,7 @@ def create_monitor_stack(
     dispatcher = AlertDispatcher(
         channels=channels,
         throttle_secs=config.throttle_secs,
+        paper_mode=paper_mode,
     )
 
     scheduler: DailySummaryScheduler | None = None
