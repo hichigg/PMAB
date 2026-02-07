@@ -84,6 +84,30 @@ class RiskConfig(BaseModel):
     oracle: OracleConfig = OracleConfig()
 
 
+class TelegramConfig(BaseModel):
+    """Telegram alerting configuration."""
+
+    enabled: bool = False
+    bot_token: SecretStr = SecretStr("")
+    chat_id: str = ""
+
+
+class DiscordConfig(BaseModel):
+    """Discord alerting configuration."""
+
+    enabled: bool = False
+    webhook_url: SecretStr = SecretStr("")
+
+
+class AlertsConfig(BaseModel):
+    """Alerting and notification configuration."""
+
+    telegram: TelegramConfig = TelegramConfig()
+    discord: DiscordConfig = DiscordConfig()
+    throttle_secs: float = 30.0
+    daily_summary_hour_utc: int = 0
+
+
 class LoggingConfig(BaseModel):
     """Logging configuration."""
 
@@ -204,6 +228,7 @@ class Settings(BaseModel):
     feeds: FeedsConfig = FeedsConfig()
     strategy: StrategyConfig = StrategyConfig()
     logging: LoggingConfig = LoggingConfig()
+    alerts: AlertsConfig = AlertsConfig()
 
 
 def load_settings(path: str | Path | None = None) -> Settings:
