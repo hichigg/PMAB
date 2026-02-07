@@ -628,3 +628,37 @@ class TestMarketQualityGates:
         action.estimated_profit_usd = Decimal("200")
         v = monitor.check_trade(action)
         assert v.approved is True
+
+    def test_position_size_rejects(self) -> None:
+        monitor = RiskMonitor(config=_cfg(max_position_usd=10.0))
+        # action: 0.50 * 100 = 50 > 10
+        v = monitor.check_trade(_action())
+        assert v.approved is False
+        assert v.reason == RiskRejectionReason.POSITION_SIZE_EXCEEDED
+
+    def test_position_size_passes(self) -> None:
+        monitor = RiskMonitor(config=_cfg(max_position_usd=5000.0))
+        # action: 0.50 * 100 = 50 < 5000
+        v = monitor.check_trade(_action())
+        assert v.approved is True
+
+    @pytest.mark.asyncio
+    async def test_latency_trigger_via_record_api_result(self) -> None:
+        cfg = _cfg()
+        cfg.kill_switch = KillSwitchConfig(connectivity_max_latency_ms=100.0)
+        monitor = RiskMonitor(config=cfg)
+        events: list[RiskEvent] = []
+        monitor.on_event(lambda e: events.append(e))
+        await monitor.record_api_result(success=True, latency_ms=200.0)
+        assert monitor.killed is True
+        assert any(
+            e.event_type == RiskEventType.KILL_SWITCH_TRIGGERED for e in events
+        )
+
+    @pytest.mark.asyncio
+    async def test_latency_no_trigger_below_threshold(self) -> None:
+        cfg = _cfg()
+        cfg.kill_switch = KillSwitchConfig(connectivity_max_latency_ms=5000.0)
+        monitor = RiskMonitor(config=cfg)
+        await monitor.record_api_result(success=True, latency_ms=1000.0)
+        assert monitor.killed is False

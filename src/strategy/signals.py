@@ -140,9 +140,13 @@ class SignalGenerator:
             confidence = 0.99
 
         if confidence < self._config.min_confidence:
-            # For crypto, we may still want to trade with lower confidence
-            # but the edge needs to be larger
-            pass
+            logger.debug(
+                "signal_rejected_low_confidence",
+                confidence=confidence,
+                min_confidence=self._config.min_confidence,
+                feed_type=event.feed_type,
+            )
+            return None
 
         fair_value = Decimal("0.99")
 

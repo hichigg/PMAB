@@ -243,6 +243,31 @@ class TestNumericThreshold:
         signal = gen.evaluate(m)
         assert signal is None
 
+    def test_crypto_rejected_below_min_confidence(self) -> None:
+        """Crypto signals (0.85 confidence) rejected when min_confidence=0.99."""
+        gen = SignalGenerator(_cfg(min_edge=0.05, min_confidence=0.99))
+        m = _match(
+            feed_type=FeedType.CRYPTO,
+            outcome_type=OutcomeType.NUMERIC,
+            best_ask=Decimal("0.50"),
+        )
+
+        signal = gen.evaluate(m)
+        assert signal is None
+
+    def test_crypto_cross_validated_rejected_below_min_confidence(self) -> None:
+        """Cross-validated crypto (0.92) still rejected when min_confidence=0.99."""
+        gen = SignalGenerator(_cfg(min_edge=0.05, min_confidence=0.99))
+        m = _match(
+            feed_type=FeedType.CRYPTO,
+            outcome_type=OutcomeType.NUMERIC,
+            best_ask=Decimal("0.50"),
+            metadata={"cross_validated": True},
+        )
+
+        signal = gen.evaluate(m)
+        assert signal is None
+
 
 # ── Evaluate dispatch ──────────────────────────────────────────
 

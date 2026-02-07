@@ -67,6 +67,10 @@ class KillSwitchManager:
         """Return True if API error count has hit the threshold."""
         return error_count >= self._config.connectivity_max_errors
 
+    def check_latency(self, latency_ms: float) -> bool:
+        """Return True if API latency exceeds the threshold."""
+        return latency_ms > self._config.connectivity_max_latency_ms
+
     # ── State mutation ───────────────────────────────────────────
 
     def trigger(self, reason: str, trigger_type: KillSwitchTrigger) -> None:
@@ -136,6 +140,25 @@ class KillSwitchManager:
             self.trigger(
                 f"{self._api_error_count} API errors exceeds"
                 f" {self._config.connectivity_max_errors} threshold",
+                trigger,
+            )
+            return trigger
+
+        return None
+
+    def record_api_latency(self, latency_ms: float) -> KillSwitchTrigger | None:
+        """Record API latency and auto-check connectivity trigger.
+
+        Returns the trigger type if newly activated, else None.
+        """
+        if self._state.active:
+            return None
+
+        if self.check_latency(latency_ms):
+            trigger = KillSwitchTrigger.CONNECTIVITY
+            self.trigger(
+                f"API latency {latency_ms:.0f}ms exceeds"
+                f" {self._config.connectivity_max_latency_ms}ms threshold",
                 trigger,
             )
             return trigger

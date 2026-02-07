@@ -237,7 +237,7 @@ class TestPositionSizer:
         assert action.max_slippage == Decimal("0.05")
 
     def test_estimated_profit(self) -> None:
-        """Estimated profit = size_tokens * edge."""
+        """Estimated profit = size_tokens * edge - fees (zero fee default)."""
         sizer = PositionSizer(
             _cfg(base_size_usd=100.0),
             _risk(min_profit_usd=1.0),
@@ -246,5 +246,27 @@ class TestPositionSizer:
 
         action = sizer.size(sig)
         assert action is not None
+        # fee_rate_bps=0 by default, so fee_cost=0
         expected_profit = action.size * Decimal("0.50")
         assert action.estimated_profit_usd == expected_profit
+
+    def test_estimated_profit_deducts_fees(self) -> None:
+        """Estimated profit deducts fee cost when fee_rate_bps > 0."""
+        sizer = PositionSizer(
+            _cfg(base_size_usd=100.0),
+            _risk(min_profit_usd=1.0),
+        )
+        sig = _signal(edge=Decimal("0.50"), current_price=Decimal("0.50"))
+        sig.match.opportunity.fee_rate_bps = 200  # 2%
+
+        action = sizer.size(sig)
+        assert action is not None
+        # size_usd=100, price=0.50 → size_tokens=200
+        # gross_profit = 200 * 0.50 = 100
+        # fee_cost = 0.50 * 200 * 0.02 = 2.0
+        # net_profit = 100 - 2 = 98
+        gross = action.size * Decimal("0.50")
+        fee_cost = action.price * action.size * Decimal("0.02")
+        expected = gross - fee_cost
+        assert action.estimated_profit_usd == expected
+        assert action.estimated_profit_usd < gross

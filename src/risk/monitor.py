@@ -30,6 +30,7 @@ from src.risk.gates import (
     check_oracle_risk,
     check_orderbook_depth,
     check_position_concentration,
+    check_position_size,
     check_spread,
     check_uma_exposure,
 )
@@ -165,22 +166,27 @@ class RiskMonitor:
         if not verdict.approved:
             return verdict
 
-        # 6. Market status
+        # 6. Position size
+        verdict = check_position_size(action, self._config)
+        if not verdict.approved:
+            return verdict
+
+        # 7. Market status
         verdict = check_market_status(action, self._config)
         if not verdict.approved:
             return verdict
 
-        # 7. Fee rate
+        # 8. Fee rate
         verdict = check_fee_rate(action, self._config)
         if not verdict.approved:
             return verdict
 
-        # 8. Orderbook depth (directional when available)
+        # 9. Orderbook depth (directional when available)
         verdict = check_orderbook_depth(action, self._config)
         if not verdict.approved:
             return verdict
 
-        # 9. Spread
+        # 10. Spread
         verdict = check_spread(action, self._config)
         if not verdict.approved:
             return verdict
@@ -261,6 +267,21 @@ class RiskMonitor:
                 logger.warning(
                     "kill_switch_triggered",
                     trigger=trigger.value,
+                )
+                await self._emit(RiskEvent(
+                    event_type=RiskEventType.KILL_SWITCH_TRIGGERED,
+                    reason=self._kill_switch.state.reason,
+                    timestamp=time.time(),
+                ))
+
+        # Check latency regardless of success/failure
+        if latency_ms > 0:
+            trigger = self._kill_switch.record_api_latency(latency_ms)
+            if trigger is not None:
+                logger.warning(
+                    "kill_switch_triggered",
+                    trigger=trigger.value,
+                    latency_ms=latency_ms,
                 )
                 await self._emit(RiskEvent(
                     event_type=RiskEventType.KILL_SWITCH_TRIGGERED,

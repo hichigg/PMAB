@@ -227,6 +227,25 @@ def check_uma_exposure(
     return RiskVerdict(approved=True)
 
 
+def check_position_size(
+    action: TradeAction,
+    config: RiskConfig,
+) -> RiskVerdict:
+    """Reject if the individual trade value exceeds max_position_usd."""
+    trade_value = action.price * action.size
+    limit = Decimal(str(config.max_position_usd))
+    if trade_value > limit:
+        return RiskVerdict(
+            approved=False,
+            reason=RiskRejectionReason.POSITION_SIZE_EXCEEDED,
+            detail=(
+                f"Trade value ${trade_value} exceeds"
+                f" ${limit} max position limit"
+            ),
+        )
+    return RiskVerdict(approved=True)
+
+
 def check_market_status(
     action: TradeAction,
     config: RiskConfig,

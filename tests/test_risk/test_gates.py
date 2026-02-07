@@ -33,6 +33,7 @@ from src.risk.gates import (
     check_oracle_risk,
     check_orderbook_depth,
     check_position_concentration,
+    check_position_size,
     check_spread,
     check_uma_exposure,
 )
@@ -556,3 +557,36 @@ class TestFeeRate:
         )
         assert v.approved is False
         assert v.reason == RiskRejectionReason.FEE_RATE_TOO_HIGH
+
+
+# ── Position Size ────────────────────────────────────────────
+
+
+class TestPositionSize:
+    def test_within_limit(self) -> None:
+        """Trade value within max_position_usd passes."""
+        action = _action(price=Decimal("0.50"), size=Decimal("100"))
+        # 0.50 * 100 = 50 < 5000
+        v = check_position_size(action, _cfg(max_position_usd=5000.0))
+        assert v.approved is True
+
+    def test_exceeds_limit(self) -> None:
+        """Trade value over max_position_usd rejected."""
+        action = _action(price=Decimal("0.50"), size=Decimal("20000"))
+        # 0.50 * 20000 = 10000 > 5000
+        v = check_position_size(action, _cfg(max_position_usd=5000.0))
+        assert v.approved is False
+        assert v.reason == RiskRejectionReason.POSITION_SIZE_EXCEEDED
+
+    def test_at_boundary_passes(self) -> None:
+        """Trade value exactly at limit passes."""
+        action = _action(price=Decimal("0.50"), size=Decimal("10000"))
+        # 0.50 * 10000 = 5000 == 5000
+        v = check_position_size(action, _cfg(max_position_usd=5000.0))
+        assert v.approved is True
+
+    def test_detail_message(self) -> None:
+        action = _action(price=Decimal("0.50"), size=Decimal("20000"))
+        v = check_position_size(action, _cfg(max_position_usd=5000.0))
+        assert "$" in v.detail
+        assert "max position" in v.detail.lower()

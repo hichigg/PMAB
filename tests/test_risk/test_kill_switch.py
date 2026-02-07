@@ -261,3 +261,39 @@ class TestRecordApiError:
         mgr.record_api_error()
         mgr.record_api_success()
         assert mgr._api_error_count == 0
+
+
+# ── Latency ──────────────────────────────────────────────────
+
+
+class TestLatency:
+    def test_check_latency_below_threshold(self) -> None:
+        mgr = KillSwitchManager(_ks(connectivity_max_latency_ms=5000.0))
+        assert mgr.check_latency(3000.0) is False
+
+    def test_check_latency_above_threshold(self) -> None:
+        mgr = KillSwitchManager(_ks(connectivity_max_latency_ms=5000.0))
+        assert mgr.check_latency(6000.0) is True
+
+    def test_check_latency_at_boundary(self) -> None:
+        """Latency exactly at threshold should NOT trigger (not exceeded)."""
+        mgr = KillSwitchManager(_ks(connectivity_max_latency_ms=5000.0))
+        assert mgr.check_latency(5000.0) is False
+
+    def test_record_api_latency_triggers(self) -> None:
+        mgr = KillSwitchManager(_ks(connectivity_max_latency_ms=1000.0))
+        trigger = mgr.record_api_latency(2000.0)
+        assert trigger == KillSwitchTrigger.CONNECTIVITY
+        assert mgr.active is True
+
+    def test_record_api_latency_no_trigger(self) -> None:
+        mgr = KillSwitchManager(_ks(connectivity_max_latency_ms=5000.0))
+        trigger = mgr.record_api_latency(1000.0)
+        assert trigger is None
+        assert mgr.active is False
+
+    def test_record_api_latency_ignored_when_active(self) -> None:
+        mgr = KillSwitchManager(_ks(connectivity_max_latency_ms=1000.0))
+        mgr.trigger("already active", KillSwitchTrigger.MANUAL)
+        trigger = mgr.record_api_latency(2000.0)
+        assert trigger is None

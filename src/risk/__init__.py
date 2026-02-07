@@ -15,6 +15,7 @@ from src.risk.gates import (
     check_oracle_risk,
     check_orderbook_depth,
     check_position_concentration,
+    check_position_size,
     check_spread,
     check_uma_exposure,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "check_oracle_risk",
     "check_orderbook_depth",
     "check_position_concentration",
+    "check_position_size",
     "check_spread",
     "check_uma_exposure",
 ]

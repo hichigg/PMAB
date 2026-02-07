@@ -72,8 +72,11 @@ class PositionSizer:
 
         size_tokens = size_usd / price
 
-        # Estimated profit
-        estimated_profit = size_tokens * signal.edge
+        # Estimated profit (with fee deduction)
+        fee_bps = Decimal(str(signal.match.opportunity.fee_rate_bps))
+        fee_rate = fee_bps / Decimal("10000")
+        fee_cost = price * size_tokens * fee_rate
+        estimated_profit = size_tokens * signal.edge - fee_cost
 
         # Check minimum profit
         min_profit = Decimal(str(self._risk.min_profit_usd))
