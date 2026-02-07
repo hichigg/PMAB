@@ -6,9 +6,12 @@ from decimal import Decimal
 
 from src.core.config import KillSwitchConfig, RiskConfig
 from src.core.types import (
+    OracleProposal,
+    OracleProposalState,
     Position,
     RiskRejectionReason,
     RiskVerdict,
+    Side,
     TradeAction,
 )
 from src.risk.pnl import PnLTracker
@@ -118,9 +121,22 @@ def check_orderbook_depth(
     action: TradeAction,
     config: RiskConfig,
 ) -> RiskVerdict:
-    """Reject if orderbook depth is below minimum."""
-    depth = action.signal.match.opportunity.depth_usd
+    """Reject if orderbook depth is below minimum.
+
+    Uses directional depth when available: BUY checks ask depth (we buy
+    from asks), SELL checks bid depth.  Falls back to total depth_usd
+    when directional data is zero (backward compat).
+    """
+    opp = action.signal.match.opportunity
     min_depth = Decimal(str(config.min_orderbook_depth_usd))
+
+    # Pick directional depth based on trade side
+    if action.side == Side.BUY and opp.ask_depth_usd > 0:
+        depth = opp.ask_depth_usd
+    elif action.side == Side.SELL and opp.bid_depth_usd > 0:
+        depth = opp.bid_depth_usd
+    else:
+        depth = opp.depth_usd
 
     if depth < min_depth:
         return RiskVerdict(
@@ -148,3 +164,133 @@ def check_spread(
             detail=f"Spread {spread} > {max_spread} maximum",
         )
     return RiskVerdict(approved=True)
+
+
+def check_uma_exposure(
+    action: TradeAction,
+    positions: dict[str, Position],
+    oracle_proposals: dict[str, OracleProposal],
+    config: RiskConfig,
+) -> RiskVerdict:
+    """Reject trades into disputed markets or exceeding UMA exposure limits."""
+    condition_id = ""
+    if action.signal and action.signal.match:
+        condition_id = action.signal.match.opportunity.condition_id
+
+    if not condition_id:
+        return RiskVerdict(approved=True)
+
+    oracle_cfg = config.oracle
+    proposal = oracle_proposals.get(condition_id)
+
+    # Auto-reject disputed markets
+    if (
+        proposal is not None
+        and proposal.state == OracleProposalState.DISPUTED
+        and oracle_cfg.dispute_auto_reject
+    ):
+        return RiskVerdict(
+            approved=False,
+            reason=RiskRejectionReason.UMA_EXPOSURE_LIMIT,
+            detail=f"Market {condition_id} has an active UMA dispute",
+        )
+
+    # Check UMA exposure limits
+    existing_exposure = sum(
+        (
+            p.entry_price * p.size
+            for p in positions.values()
+            if p.condition_id == condition_id
+        ),
+        Decimal(0),
+    )
+    new_exposure = action.price * action.size
+    total = existing_exposure + new_exposure
+
+    usd_limit = Decimal(str(oracle_cfg.max_uma_exposure_usd))
+    pct_limit = Decimal(str(config.bankroll_usd)) * Decimal(
+        str(oracle_cfg.max_uma_exposure_pct)
+    )
+    effective_limit = min(usd_limit, pct_limit)
+
+    if total > effective_limit:
+        return RiskVerdict(
+            approved=False,
+            reason=RiskRejectionReason.UMA_EXPOSURE_LIMIT,
+            detail=(
+                f"UMA exposure ${total} would exceed"
+                f" ${effective_limit} limit"
+                f" (usd={usd_limit}, pct={pct_limit})"
+            ),
+        )
+
+    return RiskVerdict(approved=True)
+
+
+def check_market_status(
+    action: TradeAction,
+    config: RiskConfig,
+) -> RiskVerdict:
+    """Reject if the market is not in a tradeable state.
+
+    Checks market_info for: active, closed, flagged, accepting_orders.
+    Passes if market_info is None (no data to check).
+    """
+    market_info = action.signal.match.opportunity.market_info
+    if market_info is None:
+        return RiskVerdict(approved=True)
+
+    if not market_info.active:
+        return RiskVerdict(
+            approved=False,
+            reason=RiskRejectionReason.MARKET_NOT_ACTIVE,
+            detail="Market is not active",
+        )
+    if market_info.closed:
+        return RiskVerdict(
+            approved=False,
+            reason=RiskRejectionReason.MARKET_NOT_ACTIVE,
+            detail="Market is closed",
+        )
+    if market_info.flagged:
+        return RiskVerdict(
+            approved=False,
+            reason=RiskRejectionReason.MARKET_NOT_ACTIVE,
+            detail="Market is flagged",
+        )
+    if not market_info.accepting_orders:
+        return RiskVerdict(
+            approved=False,
+            reason=RiskRejectionReason.MARKET_NOT_ACTIVE,
+            detail="Market is not accepting orders",
+        )
+    return RiskVerdict(approved=True)
+
+
+def check_fee_rate(
+    action: TradeAction,
+    config: RiskConfig,
+) -> RiskVerdict:
+    """Reject if the market fee rate exceeds the configured maximum.
+
+    Allows non-zero fees when estimated profit exceeds the override
+    threshold (fee_override_min_profit_usd).
+    """
+    fee_bps = action.signal.match.opportunity.fee_rate_bps
+    if fee_bps <= config.max_fee_rate_bps:
+        return RiskVerdict(approved=True)
+
+    # Check override: high-profit trades can bypass fee limit
+    override_threshold = Decimal(str(config.fee_override_min_profit_usd))
+    if action.estimated_profit_usd >= override_threshold:
+        return RiskVerdict(approved=True)
+
+    return RiskVerdict(
+        approved=False,
+        reason=RiskRejectionReason.FEE_RATE_TOO_HIGH,
+        detail=(
+            f"Fee rate {fee_bps}bps > {config.max_fee_rate_bps}bps limit"
+            f" and profit ${action.estimated_profit_usd}"
+            f" < ${override_threshold} override"
+        ),
+    )

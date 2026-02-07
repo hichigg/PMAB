@@ -20,6 +20,8 @@ risk:
   max_spread: 0.10
   max_concurrent_positions: 10
   bankroll_usd: 10000
+  max_fee_rate_bps: 0          # reject markets with fees (0 = zero-fee only)
+  fee_override_min_profit_usd: 100  # allow fees if profit exceeds this
   kill_switch:
     max_consecutive_losses: 5
     error_window_trades: 10
@@ -33,6 +35,13 @@ risk:
       - "at the option of"
       - "may be adjusted"
       - "subject to interpretation"
+  oracle:
+    enabled: false
+    max_uma_exposure_usd: 2000
+    max_uma_exposure_pct: 0.10
+    whale_addresses: []
+    oracle_risk_price_threshold: 0.95
+    dispute_auto_reject: true
 
 scanner:
   scan_interval_secs: 60

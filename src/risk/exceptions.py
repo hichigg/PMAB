@@ -13,3 +13,7 @@ class RiskLimitBreachedError(RiskError):
 
 class KillSwitchActiveError(RiskError):
     """Trading has been halted by the kill switch."""
+
+
+class OracleRiskError(RiskError):
+    """Oracle-related risk condition detected."""

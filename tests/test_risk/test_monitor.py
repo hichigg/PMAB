@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from src.core.config import KillSwitchConfig, RiskConfig
+from src.core.config import KillSwitchConfig, OracleConfig, RiskConfig
 from src.core.types import (
     ExecutionResult,
     FeedEvent,
@@ -16,6 +16,7 @@ from src.core.types import (
     FeedType,
     KillSwitchTrigger,
     MarketCategory,
+    MarketInfo,
     MarketOpportunity,
     MatchResult,
     OutcomeType,
@@ -29,6 +30,7 @@ from src.core.types import (
     TradeAction,
 )
 from src.risk.monitor import RiskMonitor
+from src.risk.oracle_monitor import OracleMonitor
 
 # ── Helpers ─────────────────────────────────────────────────────
 
@@ -506,3 +508,123 @@ class TestEnhancedKillSwitch:
         await monitor.record_fill(_result(side=Side.SELL, price=Decimal("0.30")))
         assert monitor.killed is True
         assert monitor.kill_switch_state.trigger == KillSwitchTrigger.DAILY_LOSS
+
+
+# ── Oracle Integration ────────────────────────────────────────
+
+
+class TestOracleIntegration:
+    def test_check_trade_passes_without_dispute(self) -> None:
+        oracle = OracleMonitor(config=OracleConfig(enabled=True))
+        monitor = RiskMonitor(config=_cfg(), oracle_monitor=oracle)
+        v = monitor.check_trade(_action())
+        assert v.approved is True
+
+    @pytest.mark.asyncio
+    async def test_check_trade_rejects_disputed_market(self) -> None:
+        oracle = OracleMonitor(config=OracleConfig(
+            enabled=True,
+            dispute_auto_reject=True,
+        ))
+        monitor = RiskMonitor(config=_cfg(), oracle_monitor=oracle)
+        await oracle.ingest_dispute("cond1", "0xdisputer")
+        v = monitor.check_trade(_action(condition_id="cond1"))
+        assert v.approved is False
+        assert v.reason == RiskRejectionReason.UMA_EXPOSURE_LIMIT
+
+    def test_oracle_property_returns_monitor(self) -> None:
+        oracle = OracleMonitor(config=OracleConfig(enabled=True))
+        monitor = RiskMonitor(config=_cfg(), oracle_monitor=oracle)
+        assert monitor.oracle is oracle
+
+    def test_oracle_property_returns_none(self) -> None:
+        monitor = RiskMonitor(config=_cfg())
+        assert monitor.oracle is None
+
+    def test_snapshot_includes_oracle_fields(self) -> None:
+        oracle = OracleMonitor(config=OracleConfig(enabled=True))
+        monitor = RiskMonitor(config=_cfg(), oracle_monitor=oracle)
+        snap = monitor.snapshot()
+        assert "disputed_markets" in snap
+        assert "exposure_at_risk_usd" in snap
+
+    def test_snapshot_without_oracle_omits_fields(self) -> None:
+        monitor = RiskMonitor(config=_cfg())
+        snap = monitor.snapshot()
+        assert "disputed_markets" not in snap
+        assert "exposure_at_risk_usd" not in snap
+
+    @pytest.mark.asyncio
+    async def test_gate_order_uma_after_blacklist(self) -> None:
+        """Oracle blacklist gate runs before UMA exposure gate."""
+        oracle = OracleMonitor(config=OracleConfig(
+            enabled=True,
+            dispute_auto_reject=True,
+        ))
+        cfg = _cfg()
+        cfg.kill_switch = KillSwitchConfig()
+        monitor = RiskMonitor(config=cfg, oracle_monitor=oracle)
+
+        action = _action(condition_id="cond1")
+        action.signal.match.opportunity.question = (
+            "Resolved at discretion of the committee"
+        )
+        await oracle.ingest_dispute("cond1", "0xdisputer")
+
+        v = monitor.check_trade(action)
+        # Blacklist gate (ORACLE_RISK) should fire first
+        assert v.reason == RiskRejectionReason.ORACLE_RISK
+
+    @pytest.mark.asyncio
+    async def test_dispute_alert_forwarded_as_risk_event(self) -> None:
+        oracle = OracleMonitor(config=OracleConfig(enabled=True))
+        monitor = RiskMonitor(config=_cfg(), oracle_monitor=oracle)
+        events: list[RiskEvent] = []
+        monitor.on_event(lambda e: events.append(e))
+        await oracle.ingest_dispute("cond1", "0xdisputer")
+        assert any(
+            e.event_type == RiskEventType.DISPUTE_DETECTED for e in events
+        )
+
+
+# ── Market Quality Gates ─────────────────────────────────────
+
+
+class TestMarketQualityGates:
+    def test_market_status_rejects_closed(self) -> None:
+        monitor = RiskMonitor(config=_cfg())
+        action = _action()
+        action.signal.match.opportunity.market_info = MarketInfo(
+            condition_id="cond1", active=True, closed=True,
+        )
+        v = monitor.check_trade(action)
+        assert v.approved is False
+        assert v.reason == RiskRejectionReason.MARKET_NOT_ACTIVE
+
+    def test_market_status_rejects_flagged(self) -> None:
+        monitor = RiskMonitor(config=_cfg())
+        action = _action()
+        action.signal.match.opportunity.market_info = MarketInfo(
+            condition_id="cond1", flagged=True,
+        )
+        v = monitor.check_trade(action)
+        assert v.approved is False
+        assert v.reason == RiskRejectionReason.MARKET_NOT_ACTIVE
+
+    def test_fee_rate_rejects_nonzero(self) -> None:
+        monitor = RiskMonitor(config=_cfg(max_fee_rate_bps=0))
+        action = _action()
+        action.signal.match.opportunity.fee_rate_bps = 315
+        v = monitor.check_trade(action)
+        assert v.approved is False
+        assert v.reason == RiskRejectionReason.FEE_RATE_TOO_HIGH
+
+    def test_fee_rate_passes_with_override(self) -> None:
+        monitor = RiskMonitor(
+            config=_cfg(max_fee_rate_bps=0, fee_override_min_profit_usd=50.0),
+        )
+        action = _action()
+        action.signal.match.opportunity.fee_rate_bps = 315
+        action.estimated_profit_usd = Decimal("200")
+        v = monitor.check_trade(action)
+        assert v.approved is True

@@ -14,6 +14,8 @@ from src.core.types import (
     ExecutionResult,
     KillSwitchState,
     KillSwitchTrigger,
+    OracleAlert,
+    OracleEventType,
     RiskEvent,
     RiskEventType,
     RiskVerdict,
@@ -21,14 +23,18 @@ from src.core.types import (
 )
 from src.risk.gates import (
     check_daily_loss,
+    check_fee_rate,
     check_kill_switch,
+    check_market_status,
     check_max_concurrent_positions,
     check_oracle_risk,
     check_orderbook_depth,
     check_position_concentration,
     check_spread,
+    check_uma_exposure,
 )
 from src.risk.kill_switch import KillSwitchManager
+from src.risk.oracle_monitor import OracleMonitor
 from src.risk.pnl import PnLTracker
 from src.risk.positions import PositionTracker
 
@@ -53,14 +59,23 @@ class RiskMonitor:
         await monitor.record_fill(result)
     """
 
-    def __init__(self, config: RiskConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: RiskConfig | None = None,
+        oracle_monitor: OracleMonitor | None = None,
+    ) -> None:
         from src.core.config import get_settings
 
         self._config = config or get_settings().risk
         self._positions = PositionTracker()
         self._pnl = PnLTracker()
         self._kill_switch = KillSwitchManager(self._config.kill_switch)
+        self._oracle_monitor = oracle_monitor
         self._callbacks: list[RiskEventCallback] = []
+
+        # Wire oracle alerts → risk events
+        if self._oracle_monitor is not None:
+            self._oracle_monitor.on_alert(self._forward_oracle_alert)
 
     @property
     def positions(self) -> PositionTracker:
@@ -81,6 +96,11 @@ class RiskMonitor:
     def kill_switch_state(self) -> KillSwitchState:
         """Full kill switch state snapshot."""
         return self._kill_switch.state
+
+    @property
+    def oracle(self) -> OracleMonitor | None:
+        """The oracle monitor, if configured."""
+        return self._oracle_monitor
 
     def on_event(self, callback: RiskEventCallback) -> None:
         """Register a callback for risk events."""
@@ -115,6 +135,17 @@ class RiskMonitor:
         if not verdict.approved:
             return verdict
 
+        # 2.5. UMA exposure / dispute check
+        if self._oracle_monitor is not None:
+            verdict = check_uma_exposure(
+                action,
+                self._positions.positions,
+                self._oracle_monitor.proposals,
+                self._config,
+            )
+            if not verdict.approved:
+                return verdict
+
         # 3. Daily loss limit
         verdict = check_daily_loss(self._pnl, self._config)
         if not verdict.approved:
@@ -134,12 +165,22 @@ class RiskMonitor:
         if not verdict.approved:
             return verdict
 
-        # 6. Orderbook depth
+        # 6. Market status
+        verdict = check_market_status(action, self._config)
+        if not verdict.approved:
+            return verdict
+
+        # 7. Fee rate
+        verdict = check_fee_rate(action, self._config)
+        if not verdict.approved:
+            return verdict
+
+        # 8. Orderbook depth (directional when available)
         verdict = check_orderbook_depth(action, self._config)
         if not verdict.approved:
             return verdict
 
-        # 7. Spread
+        # 9. Spread
         verdict = check_spread(action, self._config)
         if not verdict.approved:
             return verdict
@@ -241,7 +282,7 @@ class RiskMonitor:
         """Return a snapshot of current risk state."""
         self._pnl._maybe_reset_day()
         ks = self._kill_switch.state
-        return {
+        snap: dict[str, object] = {
             "killed": self._kill_switch.active,
             "kill_switch_trigger": ks.trigger.value if ks.trigger else None,
             "kill_switch_reason": ks.reason,
@@ -251,3 +292,27 @@ class RiskMonitor:
             "realized_total": float(self._pnl.realized_total),
             "trade_count_today": self._pnl.trade_count_today,
         }
+        if self._oracle_monitor is not None:
+            snap["disputed_markets"] = len(
+                self._oracle_monitor.disputed_conditions,
+            )
+            snap["exposure_at_risk_usd"] = float(
+                self._oracle_monitor.exposure_at_risk(),
+            )
+        return snap
+
+    async def _forward_oracle_alert(self, alert: OracleAlert) -> None:
+        """Forward oracle alerts as RiskEvents."""
+        event_type_map = {
+            OracleEventType.DISPUTE_DETECTED: RiskEventType.DISPUTE_DETECTED,
+            OracleEventType.WHALE_ACTIVITY_DETECTED: (
+                RiskEventType.WHALE_ACTIVITY_DETECTED
+            ),
+        }
+        risk_event_type = event_type_map.get(alert.event_type)
+        if risk_event_type is not None:
+            await self._emit(RiskEvent(
+                event_type=risk_event_type,
+                reason=alert.reason,
+                timestamp=alert.timestamp,
+            ))

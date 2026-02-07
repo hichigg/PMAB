@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
 _settings: Settings | None = None
 
@@ -50,6 +50,17 @@ class KillSwitchConfig(BaseModel):
     ]
 
 
+class OracleConfig(BaseModel):
+    """Oracle risk monitoring configuration."""
+
+    enabled: bool = False
+    max_uma_exposure_usd: float = 2000.0
+    max_uma_exposure_pct: float = 0.10
+    whale_addresses: list[str] = Field(default_factory=list)
+    oracle_risk_price_threshold: float = 0.95
+    dispute_auto_reject: bool = True
+
+
 class RiskConfig(BaseModel):
     """Risk management configuration."""
 
@@ -62,7 +73,10 @@ class RiskConfig(BaseModel):
     max_spread: float = 0.10
     max_concurrent_positions: int = 10
     bankroll_usd: float = 10000.0
+    max_fee_rate_bps: int = 0
+    fee_override_min_profit_usd: float = 100.0
     kill_switch: KillSwitchConfig = KillSwitchConfig()
+    oracle: OracleConfig = OracleConfig()
 
 
 class LoggingConfig(BaseModel):

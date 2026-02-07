@@ -366,6 +366,14 @@ class MarketScanner:
             score = _score_opportunity(market_book, hours, self._config.score_weights)
             category = _classify_market(market)
 
+            bid_depth = sum(
+                (lvl.price * lvl.size for lvl in market_book.bids),
+                Decimal(0),
+            )
+            ask_depth = sum(
+                (lvl.price * lvl.size for lvl in market_book.asks),
+                Decimal(0),
+            )
             opp = MarketOpportunity(
                 condition_id=market.condition_id,
                 question=market.question,
@@ -376,6 +384,8 @@ class MarketScanner:
                 best_ask=market_book.best_ask,
                 spread=market_book.spread,
                 depth_usd=market_book.depth_usd,
+                bid_depth_usd=bid_depth,
+                ask_depth_usd=ask_depth,
                 score=score,
                 first_seen=now,
                 last_updated=now,
@@ -485,6 +495,12 @@ class MarketScanner:
             opp.best_ask = book.best_ask
             opp.spread = book.spread
             opp.depth_usd = book.depth_usd
+            opp.bid_depth_usd = sum(
+                (lvl.price * lvl.size for lvl in book.bids), Decimal(0),
+            )
+            opp.ask_depth_usd = sum(
+                (lvl.price * lvl.size for lvl in book.asks), Decimal(0),
+            )
             opp.last_updated = now
             hours = _hours_until_expiry(opp.market_info) if opp.market_info else None
             opp.score = _score_opportunity(book, hours, self._config.score_weights)

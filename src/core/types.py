@@ -106,6 +106,8 @@ class MarketInfo(BaseModel):
     tokens: list[dict[str, Any]] = Field(default_factory=list)
     active: bool = True
     closed: bool = False
+    accepting_orders: bool = True
+    flagged: bool = False
     end_date_iso: str = ""
     tags: list[str] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)
@@ -170,6 +172,9 @@ class MarketOpportunity(BaseModel):
     best_ask: Decimal | None = None
     spread: Decimal | None = None
     depth_usd: Decimal = Decimal("0")
+    bid_depth_usd: Decimal = Decimal("0")
+    ask_depth_usd: Decimal = Decimal("0")
+    fee_rate_bps: int = 0
     score: float = 0.0
     first_seen: float = 0.0
     last_updated: float = 0.0
@@ -424,6 +429,8 @@ class RiskEventType(StrEnum):
     POSITION_OPENED = "POSITION_OPENED"
     POSITION_CLOSED = "POSITION_CLOSED"
     DAILY_PNL_UPDATED = "DAILY_PNL_UPDATED"
+    DISPUTE_DETECTED = "DISPUTE_DETECTED"
+    WHALE_ACTIVITY_DETECTED = "WHALE_ACTIVITY_DETECTED"
 
 
 class RiskRejectionReason(StrEnum):
@@ -431,11 +438,14 @@ class RiskRejectionReason(StrEnum):
 
     KILL_SWITCH_ACTIVE = "KILL_SWITCH_ACTIVE"
     ORACLE_RISK = "ORACLE_RISK"
+    UMA_EXPOSURE_LIMIT = "UMA_EXPOSURE_LIMIT"
     DAILY_LOSS_LIMIT = "DAILY_LOSS_LIMIT"
     POSITION_CONCENTRATION = "POSITION_CONCENTRATION"
     MAX_CONCURRENT_POSITIONS = "MAX_CONCURRENT_POSITIONS"
     ORDERBOOK_DEPTH = "ORDERBOOK_DEPTH"
     SPREAD_TOO_WIDE = "SPREAD_TOO_WIDE"
+    MARKET_NOT_ACTIVE = "MARKET_NOT_ACTIVE"
+    FEE_RATE_TOO_HIGH = "FEE_RATE_TOO_HIGH"
 
 
 class KillSwitchTrigger(StrEnum):
@@ -455,6 +465,65 @@ class KillSwitchState(BaseModel):
     trigger: KillSwitchTrigger | None = None
     triggered_at: float = 0.0
     reason: str = ""
+
+
+# ── Oracle Types ──────────────────────────────────────────────
+
+
+class OracleProposalState(StrEnum):
+    """State of a UMA oracle proposal."""
+
+    PROPOSED = "PROPOSED"
+    DISPUTED = "DISPUTED"
+    SETTLED = "SETTLED"
+    EXPIRED = "EXPIRED"
+
+
+class OracleEventType(StrEnum):
+    """Type of oracle monitoring event."""
+
+    PROPOSAL_DETECTED = "PROPOSAL_DETECTED"
+    DISPUTE_DETECTED = "DISPUTE_DETECTED"
+    SETTLEMENT_DETECTED = "SETTLEMENT_DETECTED"
+    WHALE_ACTIVITY_DETECTED = "WHALE_ACTIVITY_DETECTED"
+
+
+class OracleProposal(BaseModel):
+    """A UMA oracle proposal tracked by the oracle monitor."""
+
+    condition_id: str
+    proposal_hash: str = ""
+    proposer: str = ""
+    proposed_outcome: str = ""
+    state: OracleProposalState = OracleProposalState.PROPOSED
+    proposed_at: float = 0.0
+    disputed_at: float = 0.0
+    settled_at: float = 0.0
+    disputer: str = ""
+    bond_amount: Decimal = Decimal("0")
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class WhaleActivity(BaseModel):
+    """Activity from a known UMA whale wallet."""
+
+    address: str
+    condition_id: str = ""
+    action: str = ""
+    timestamp: float = 0.0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class OracleAlert(BaseModel):
+    """Alert emitted by the oracle monitor."""
+
+    event_type: OracleEventType
+    condition_id: str = ""
+    proposal: OracleProposal | None = None
+    whale_activity: WhaleActivity | None = None
+    held_position_exposure: Decimal = Decimal("0")
+    reason: str = ""
+    timestamp: float = 0.0
 
 
 class Position(BaseModel):

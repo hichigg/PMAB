@@ -737,3 +737,59 @@ class TestHoursUntilExpiry:
     def test_invalid_date_returns_none(self) -> None:
         market = _make_market(end_date_iso="not-a-date")
         assert _hours_until_expiry(market) is None
+
+
+# ── Directional Depth ─────────────────────────────────────────
+
+
+class TestDirectionalDepth:
+    """Verify bid_depth_usd / ask_depth_usd populated by scan and WS."""
+
+    @pytest.mark.asyncio()
+    async def test_scan_once_populates_directional_depth(self) -> None:
+        market = _make_market(tokens=[{"token_id": "tok1"}])
+        book = _make_book(
+            token_id="tok1",
+            bids=[("0.50", "200")],  # bid depth = 0.50*200 = 100
+            asks=[("0.60", "300")],  # ask depth = 0.60*300 = 180
+        )
+        client = _make_mock_client(markets=[market], books={"tok1": book})
+        scanner = MarketScanner(
+            client,
+            ScanFilter(),
+            LiquidityScreen(min_depth_usd=Decimal("10"), max_spread=Decimal("0.50")),
+            ScannerConfig(max_tracked_markets=10, orderbook_batch_size=10),
+        )
+        result = await scanner.scan_once()
+        assert len(result) == 1
+        opp = result[0]
+        assert opp.bid_depth_usd == Decimal("100")
+        assert opp.ask_depth_usd == Decimal("180")
+
+    @pytest.mark.asyncio()
+    async def test_ws_update_sets_directional_depth(self) -> None:
+        market = _make_market(tokens=[{"token_id": "tok1"}])
+        book = _make_book(
+            token_id="tok1",
+            bids=[("0.50", "200")],
+            asks=[("0.55", "200")],
+        )
+        client = _make_mock_client(markets=[market], books={"tok1": book})
+        scanner = MarketScanner(
+            client,
+            ScanFilter(),
+            LiquidityScreen(min_depth_usd=Decimal("10"), max_spread=Decimal("0.50")),
+            ScannerConfig(max_tracked_markets=10, orderbook_batch_size=10),
+        )
+        await scanner.scan_once()
+
+        updated_book = _make_book(
+            token_id="tok1",
+            bids=[("0.48", "400")],  # bid depth = 0.48*400 = 192
+            asks=[("0.52", "500")],  # ask depth = 0.52*500 = 260
+        )
+        await scanner._on_book_update(updated_book)
+
+        opp = scanner.opportunities["0xabc"]
+        assert opp.bid_depth_usd == Decimal("192.0")
+        assert opp.ask_depth_usd == Decimal("260.0")

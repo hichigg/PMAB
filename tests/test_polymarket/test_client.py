@@ -172,6 +172,28 @@ class TestParseMarket:
         assert market.tags == ["politics"]
         assert market.raw == raw
 
+    def test_parses_accepting_orders(self) -> None:
+        raw = {
+            "condition_id": "0xabc",
+            "accepting_orders": False,
+        }
+        market = _parse_market(raw)
+        assert market.accepting_orders is False
+
+    def test_parses_flagged(self) -> None:
+        raw = {
+            "condition_id": "0xabc",
+            "flagged": True,
+        }
+        market = _parse_market(raw)
+        assert market.flagged is True
+
+    def test_defaults_for_new_fields(self) -> None:
+        raw = {"condition_id": "0xabc"}
+        market = _parse_market(raw)
+        assert market.accepting_orders is True
+        assert market.flagged is False
+
 
 class TestClientOrderBook:
     """Test order book retrieval via client."""

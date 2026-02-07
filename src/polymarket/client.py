@@ -69,6 +69,8 @@ def _parse_market(raw: dict[str, Any]) -> MarketInfo:
         tokens=raw.get("tokens", []),
         active=raw.get("active", True),
         closed=raw.get("closed", False),
+        accepting_orders=raw.get("accepting_orders", True),
+        flagged=raw.get("flagged", False),
         end_date_iso=raw.get("end_date_iso", ""),
         tags=raw.get("tags", []),
         raw=raw,
