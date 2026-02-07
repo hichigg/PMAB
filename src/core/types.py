@@ -487,6 +487,7 @@ class OracleEventType(StrEnum):
     DISPUTE_DETECTED = "DISPUTE_DETECTED"
     SETTLEMENT_DETECTED = "SETTLEMENT_DETECTED"
     WHALE_ACTIVITY_DETECTED = "WHALE_ACTIVITY_DETECTED"
+    HIGH_ORACLE_RISK = "HIGH_ORACLE_RISK"
 
 
 class OracleProposal(BaseModel):
@@ -525,6 +526,20 @@ class OracleAlert(BaseModel):
     held_position_exposure: Decimal = Decimal("0")
     reason: str = ""
     timestamp: float = 0.0
+
+
+class OracleRiskAssessment(BaseModel):
+    """Oracle risk assessment for a held position."""
+
+    token_id: str
+    condition_id: str = ""
+    entry_price: Decimal = Decimal("0")
+    current_price: Decimal = Decimal("0")
+    size: Decimal = Decimal("0")
+    oracle_risk_premium: Decimal = Decimal("0")
+    exposure_usd: Decimal = Decimal("0")
+    has_active_dispute: bool = False
+    recommendation: str = ""
 
 
 class Position(BaseModel):

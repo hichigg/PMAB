@@ -20,6 +20,7 @@ from src.risk.gates import (
     check_uma_exposure,
 )
 from src.risk.kill_switch import KillSwitchManager
+from src.risk.market_quality import MarketQualityFilter
 from src.risk.monitor import RiskEventCallback, RiskMonitor
 from src.risk.oracle_monitor import OracleAlertCallback, OracleMonitor
 from src.risk.pnl import PnLTracker
@@ -28,6 +29,7 @@ from src.risk.positions import PositionTracker
 __all__ = [
     "KillSwitchActiveError",
     "KillSwitchManager",
+    "MarketQualityFilter",
     "OracleAlertCallback",
     "OracleMonitor",
     "OracleRiskError",

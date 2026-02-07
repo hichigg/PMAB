@@ -24,6 +24,7 @@ from src.core.types import (
 )
 from src.polymarket.client import PolymarketClient
 from src.polymarket.scanner import MarketScanner
+from src.risk.market_quality import MarketQualityFilter
 from src.risk.monitor import RiskMonitor
 from src.strategy.matcher import MarketMatcher
 from src.strategy.prioritizer import OpportunityPrioritizer
@@ -63,6 +64,7 @@ class ArbEngine:
         risk_config: RiskConfig | None = None,
         risk_monitor: RiskMonitor | None = None,
         prioritizer: OpportunityPrioritizer | None = None,
+        quality_filter: MarketQualityFilter | None = None,
     ) -> None:
         settings = get_settings()
         self._client = client
@@ -77,6 +79,7 @@ class ArbEngine:
         self._prioritizer = prioritizer or OpportunityPrioritizer(
             self._config.prioritizer,
         )
+        self._quality_filter = quality_filter
 
         self._callbacks: list[ArbEventCallback] = []
         self._lock = asyncio.Lock()
@@ -214,7 +217,19 @@ class ArbEngine:
                 )
 
     async def _process_match(self, match: MatchResult) -> ExecutionResult | None:
-        """Signal → size → execute pipeline for a single match."""
+        """Quality filter → signal → size → execute pipeline for a single match."""
+        # Pre-screen market quality (Phase 4.3)
+        if self._quality_filter is not None:
+            verdict = self._quality_filter.check(match.opportunity)
+            if not verdict.approved:
+                self._trades_skipped += 1
+                await self._emit(ArbEvent(
+                    event_type=ArbEventType.RISK_REJECTED,
+                    reason=f"Market quality: {verdict.detail}",
+                    timestamp=time.time(),
+                ))
+                return None
+
         # Generate signal
         signal = self._signal_gen.evaluate(match)
         if signal is None:

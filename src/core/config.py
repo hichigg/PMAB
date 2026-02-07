@@ -59,6 +59,11 @@ class OracleConfig(BaseModel):
     whale_addresses: list[str] = Field(default_factory=list)
     oracle_risk_price_threshold: float = 0.95
     dispute_auto_reject: bool = True
+    poll_interval_secs: float = 30.0
+    subgraph_url: str = (
+        "https://api.thegraph.com/subgraphs/name/umaprotocol/optimistic-oracle-v3-polygon"
+    )
+    hedge_risk_threshold: float = 0.02
 
 
 class RiskConfig(BaseModel):
