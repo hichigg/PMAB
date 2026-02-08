@@ -31,8 +31,11 @@ if _PROJECT_ROOT not in sys.path:
 
 import structlog
 
+from decimal import Decimal
+
 from src.core.config import load_settings
 from src.core.logging import setup_logging
+from src.core.types import LiquidityScreen, MarketCategory, ScanFilter
 from src.feeds.crypto import CryptoFeed
 from src.feeds.economic import EconomicFeed
 from src.feeds.sports import SportsFeed
@@ -80,8 +83,25 @@ async def run(args: argparse.Namespace) -> int:
     )
     await client.connect()
 
-    # ── Market scanner ────────────────────────────────────────────
-    scanner = MarketScanner(client=client, config=settings.scanner)
+    # ── Market scanner (only track categories our feeds cover) ───
+    scan_filter = ScanFilter(
+        categories=[
+            MarketCategory.ECONOMIC,
+            MarketCategory.SPORTS,
+            MarketCategory.CRYPTO,
+        ],
+    )
+    # Relaxed liquidity screen for paper trading — accept thinner markets
+    liquidity_screen = LiquidityScreen(
+        min_depth_usd=Decimal("10"),
+        max_spread=Decimal("0.50"),
+    )
+    scanner = MarketScanner(
+        client=client,
+        scan_filter=scan_filter,
+        liquidity_screen=liquidity_screen,
+        config=settings.scanner,
+    )
 
     # ── Oracle monitor ────────────────────────────────────────────
     oracle_monitor: OracleMonitor | None = None

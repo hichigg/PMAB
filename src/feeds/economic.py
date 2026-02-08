@@ -153,7 +153,9 @@ class EconomicFeed(BaseFeed):
 
         # Build the series IDs to request
         series_ids = list(_BLS_SERIES_MAP.keys())
-        payload = {"seriesid": series_ids, "latest": True}
+        payload: dict[str, object] = {"seriesid": series_ids, "latest": True}
+        if self._config.api_key:
+            payload["registrationkey"] = self._config.api_key
 
         try:
             response = await self._http.post(self._config.base_url, json=payload)
@@ -196,14 +198,29 @@ class EconomicFeed(BaseFeed):
         return events
 
     def _parse_response(self, body: dict[str, object]) -> list[EconomicRelease]:
-        """Parse the full BLS API response body."""
+        """Parse the full BLS API response body.
+
+        Returns an empty list (instead of raising) when the response has an
+        unexpected shape — e.g. rate-limit or auth-error responses from BLS.
+        """
+        status = str(body.get("status", ""))
+        if status not in ("REQUEST_SUCCEEDED", ""):
+            logger.warning(
+                "bls_api_non_success",
+                status=status,
+                message=body.get("message", []),
+            )
+            return []
+
         results = body.get("Results")
         if not isinstance(results, dict):
-            raise FeedParseError("BLS response missing 'Results' key")
+            logger.warning("bls_response_missing_results", keys=list(body.keys()))
+            return []
 
         series_list = results.get("series")
         if not isinstance(series_list, list):
-            raise FeedParseError("BLS response missing 'Results.series' key")
+            logger.warning("bls_response_missing_series", keys=list(results.keys()))
+            return []
 
         releases: list[EconomicRelease] = []
         for series_data in series_list:

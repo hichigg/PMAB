@@ -359,6 +359,10 @@ class MarketScanner:
             if market_book is None:
                 continue
 
+            # Skip tokens with empty orderbooks (404 / delisted)
+            if not market_book.bids and not market_book.asks:
+                continue
+
             if not _passes_liquidity(market_book, self._screen):
                 continue
 

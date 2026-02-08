@@ -246,14 +246,15 @@ class TestEconomicFeedPoll:
         finally:
             await feed.close()
 
-    async def test_poll_raises_on_parse_error(self) -> None:
+    async def test_poll_returns_empty_on_bad_response(self) -> None:
+        """Bad BLS response shape returns empty list instead of raising."""
         feed = EconomicFeed(config=_cfg())
         await feed.connect()
         try:
             with patch.object(feed._http, "post", new_callable=AsyncMock) as mock_post:  # type: ignore[union-attr]
                 mock_post.return_value = _mock_response({"bad": "data"})
-                with pytest.raises(FeedParseError):
-                    await feed.poll()
+                events = await feed.poll()
+                assert events == []
         finally:
             await feed.close()
 

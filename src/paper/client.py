@@ -201,13 +201,18 @@ class PaperTradingClient:
                 continue
 
             token_list = list(self._tracked_tokens)
-            try:
-                books = await self._real_client.get_orderbooks(token_list)
-                updates = {b.token_id: b for b in books}
+            updates: dict[str, object] = {}
+            for token_id in token_list:
+                try:
+                    book = await self._real_client.get_orderbook(token_id)
+                    updates[book.token_id] = book
+                except Exception:
+                    # Individual token failure — skip it, don't crash the loop
+                    logger.debug("orderbook_refresh_skip", token_id=token_id[:16])
+
+            if updates:
                 self._sim.set_orderbooks(updates)
                 logger.debug(
                     "orderbooks_refreshed",
                     count=len(updates),
                 )
-            except Exception:
-                logger.exception("orderbook_refresh_error")

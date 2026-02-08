@@ -78,12 +78,24 @@ def _normalize_team_name(name: str) -> str:
 
 
 def _team_in_question(team_name: str, question: str) -> bool:
-    """Check if a team name appears in a market question (fuzzy)."""
+    """Check if a team name appears in a market question (fuzzy).
+
+    Handles ESPN full names (e.g. "Denver Nuggets") matching Polymarket
+    short names (e.g. "Nuggets vs Clippers") by also checking individual
+    words of the team name (length > 3 to avoid "LA", "FC", "NY").
+    """
     normalized = _normalize_team_name(team_name)
     question_lower = question.lower()
     if not normalized:
         return False
-    return normalized in question_lower
+    # Full name match
+    if normalized in question_lower:
+        return True
+    # Individual word match (nickname — e.g. "nuggets" from "Denver Nuggets")
+    for word in normalized.split():
+        if len(word) > 3 and word in question_lower:
+            return True
+    return False
 
 
 def _find_token_for_outcome(
@@ -91,14 +103,27 @@ def _find_token_for_outcome(
 ) -> str | None:
     """Find the token_id whose outcome field matches (case-insensitive).
 
-    Polymarket tokens look like:
-        [{"token_id": "0xabc", "outcome": "Yes"}, {"token_id": "0xdef", "outcome": "No"}]
+    Supports both exact and partial matching to handle ESPN full names
+    (e.g. "Denver Nuggets") vs Polymarket short names (e.g. "Nuggets").
     """
     outcome_lower = outcome.lower()
+    # Exact match first
     for token in tokens:
         token_outcome = str(token.get("outcome", "")).lower()
         if token_outcome == outcome_lower:
             return str(token.get("token_id", ""))
+    # Partial match: check if any outcome word (>3 chars) appears in the token outcome
+    # or vice versa (e.g. "Denver Nuggets" → matches token "Nuggets")
+    outcome_words = [w for w in outcome_lower.split() if len(w) > 3]
+    for token in tokens:
+        token_outcome = str(token.get("outcome", "")).lower()
+        for word in outcome_words:
+            if word == token_outcome or word in token_outcome:
+                return str(token.get("token_id", ""))
+        # Reverse: token outcome word in full outcome name
+        for tok_word in token_outcome.split():
+            if len(tok_word) > 3 and tok_word in outcome_lower:
+                return str(token.get("token_id", ""))
     return None
 
 
